@@ -1,0 +1,782 @@
+openapi: 3.0.3
+info:
+  title: ClearKhong API — Full
+  version: 1.3.0
+  description: All endpoints per screenshots with readable examples and big-section
+    tags.
+servers:
+- url: http://127.0.0.1:4000
+tags:
+- name: Auth
+  description: Authentication & session
+- name: Profile
+  description: User profile & public profile
+- name: Posts
+  description: Create, edit, list marketplace posts
+- name: Comments
+  description: Post comments
+- name: Trades
+  description: Trade offers & actions
+- name: Reports
+  description: User/content reports
+- name: Admin
+  description: Admin moderation & user management
+- name: Notifications
+  description: User notifications
+- name: Tokens
+  description: Top-up / token operations
+security:
+- bearerAuth: []
+  cookieAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: token
+  schemas:
+    AuthRegister:
+      type: object
+      required:
+      - username
+      - password
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+        shopName:
+          type: string
+        phone:
+          type: string
+          pattern: ^\d{10}$
+        email:
+          type: string
+          format: email
+      example:
+        username: diana
+        password: P@ssw0rd!
+        shopName: Diana Shop
+        phone: 0912345678
+        email: diana@example.com
+    AuthLogin:
+      type: object
+      required:
+      - username
+      - password
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+      example:
+        username: diana
+        password: P@ssw0rd!
+    ProfileUpdate:
+      type: object
+      properties:
+        shopName:
+          type: string
+        phone:
+          type: string
+          pattern: ^\d{10}$
+        email:
+          type: string
+          format: email
+        address:
+          type: string
+        bio:
+          type: string
+        profileImage:
+          type: string
+          format: binary
+      example:
+        shopName: Diana Shop
+        phone: 0912345678
+        email: diana@example.com
+        address: 99/1 ถนนสุขุมวิท กรุงเทพฯ 10110
+        bio: รับซื้อ-ขาย จ.-ศ. 10:00-18:00
+    PostCreate:
+      type: object
+      required:
+      - title
+      - description
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        is_sell:
+          type: boolean
+        is_trade:
+          type: boolean
+        price:
+          type: number
+          format: float
+          nullable: true
+        tags:
+          oneOf:
+          - type: string
+          - type: array
+            items:
+              type: string
+        images:
+          type: array
+          items:
+            type: string
+            format: binary
+      example:
+        title: iPhone 13 128GB
+        description: สภาพ 95% มีรอยขนแมวเล็กน้อย
+        is_sell: true
+        is_trade: false
+        price: 14500
+        tags: iphone,apple,มือสอง
+    PostUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        is_sell:
+          type: boolean
+        is_trade:
+          type: boolean
+        price:
+          type: number
+          format: float
+          nullable: true
+        tags:
+          oneOf:
+          - type: string
+          - type: array
+            items:
+              type: string
+        images:
+          type: array
+          items:
+            type: string
+            format: binary
+      example:
+        title: iPhone 13 128GB - ลดราคา
+        price: 13900
+        tags:
+        - iphone
+        - มือสอง
+    CommentCreate:
+      type: object
+      required:
+      - body
+      properties:
+        body:
+          type: string
+      example:
+        body: สนใจครับ นัดรับได้ที่ไหน
+    ReportCreate:
+      type: object
+      required:
+      - target_user_id
+      properties:
+        target_user_id:
+          type: integer
+        reasons:
+          oneOf:
+          - type: string
+          - type: array
+            items:
+              type: string
+        details:
+          type: string
+        images:
+          type: array
+          items:
+            type: string
+            format: binary
+      example:
+        target_user_id: 2
+        reasons: spam,scam
+        details: ส่งลิงก์หลอกลวง
+    TradeCreate:
+      type: object
+      properties:
+        description:
+          type: string
+        images:
+          type: array
+          items:
+            type: string
+            format: binary
+      example:
+        description: ขอแลกกับ AirPods Pro + เพิ่มเงิน 1,000 บาท
+    AdminUserUpdate:
+      type: object
+      properties:
+        shopName:
+          type: string
+        phone:
+          type: string
+          pattern: ^\d{10}$
+        email:
+          type: string
+          format: email
+        address:
+          type: string
+        bio:
+          type: string
+      example:
+        shopName: New Name
+        phone: 0891234567
+        email: user@example.com
+        address: บางนา, กทม.
+        bio: อัปเดตโดยแอดมิน
+    AdminReportStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - open
+          - reviewing
+          - resolved
+      example:
+        status: reviewing
+    TokensConfirm:
+      type: object
+      properties:
+        amount:
+          type: integer
+          enum:
+          - 5
+          - 10
+          - 20
+          - 50
+          - 100
+          - 500
+      example:
+        amount: 10
+paths:
+  /api/auth/register:
+    post:
+      tags:
+      - Auth
+      summary: Register a new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthRegister'
+      responses:
+        '200':
+          description: OK
+        '400':
+          description: Validation error
+  /api/auth/login:
+    post:
+      tags:
+      - Auth
+      summary: Login with username/password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthLogin'
+      responses:
+        '200':
+          description: OK
+        '400':
+          description: Invalid credentials
+  /api/auth/logout:
+    post:
+      tags:
+      - Auth
+      summary: Logout (clear cookie token)
+      responses:
+        '200':
+          description: OK
+  /api/profile/history:
+    get:
+      tags:
+      - Profile
+      summary: My post history
+      responses:
+        '200':
+          description: OK
+  /api/profile/me:
+    get:
+      tags:
+      - Profile
+      summary: Get my profile
+      responses:
+        '200':
+          description: OK
+    put:
+      tags:
+      - Profile
+      summary: Update my profile
+      requestBody:
+        required: false
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdate'
+      responses:
+        '200':
+          description: OK
+  /api/profile/public/{id}:
+    get:
+      tags:
+      - Profile
+      summary: Public profile by ID
+      security: []
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: OK
+        '404':
+          description: Not found
+  /api/posts:
+    get:
+      tags:
+      - Posts
+      summary: List approved posts
+      security: []
+      responses:
+        '200':
+          description: OK
+    post:
+      tags:
+      - Posts
+      summary: Create a post
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PostCreate'
+      responses:
+        '200':
+          description: OK
+  /api/posts/{id}:
+    get:
+      tags:
+      - Posts
+      summary: Get post detail
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      security: []
+      responses:
+        '200':
+          description: OK
+    put:
+      tags:
+      - Posts
+      summary: Edit my post
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        required: false
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PostUpdate'
+      responses:
+        '200':
+          description: OK
+    delete:
+      tags:
+      - Posts
+      summary: Delete my post
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: OK
+  /api/posts/{id}/confirm:
+    post:
+      tags:
+      - Posts
+      summary: Confirm to pending
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: OK
+  /api/posts/{id}/promote:
+    post:
+      tags:
+      - Posts
+      summary: Promote post
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: OK
+  /api/posts/{id}/publish:
+    post:
+      tags:
+      - Posts
+      summary: Publish post
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: OK
+  /api/posts/{id}/resubmit:
+    post:
+      tags:
+      - Posts
+      summary: Resubmit rejected post
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: OK
+  /api/comments/{postId}:
+    get:
+      tags:
+      - Comments
+      summary: List comments of a post
+      parameters:
+      - in: path
+        name: postId
+        required: true
+        schema:
+          type: integer
+      security: []
+      responses:
+        '200':
+          description: OK
+    post:
+      tags:
+      - Comments
+      summary: Add a comment
+      parameters:
+      - in: path
+        name: postId
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentCreate'
+      responses:
+        '200':
+          description: OK
+  /api/trades/{postId}:
+    get:
+      tags:
+      - Trades
+      summary: List trade offers of a post
+      parameters:
+      - in: path
+        name: postId
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: OK
+    post:
+      tags:
+      - Trades
+      summary: Create trade offer
+      parameters:
+      - in: path
+        name: postId
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        required: false
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TradeCreate'
+      responses:
+        '200':
+          description: OK
+  /api/trades/{postId}/accept/{offerId}:
+    post:
+      tags:
+      - Trades
+      summary: Accept trade offer
+      parameters:
+      - in: path
+        name: postId
+        required: true
+        schema:
+          type: integer
+      - in: path
+        name: offerId
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: OK
+  /api/reports:
+    post:
+      tags:
+      - Reports
+      summary: Create a report
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ReportCreate'
+      responses:
+        '200':
+          description: OK
+  /api/admin/pending:
+    get:
+      tags:
+      - Admin
+      summary: List pending posts
+      responses:
+        '200':
+          description: OK
+  /api/admin/posts:
+    get:
+      tags:
+      - Admin
+      summary: List all posts
+      responses:
+        '200':
+          description: OK
+  /api/admin/posts/{id}/approve:
+    post:
+      tags:
+      - Admin
+      summary: Approve a post
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: OK
+  /api/admin/posts/{id}/reject:
+    post:
+      tags:
+      - Admin
+      summary: Reject a post
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: OK
+  /api/admin/reports:
+    get:
+      tags:
+      - Admin
+      summary: List reports
+      responses:
+        '200':
+          description: OK
+  /api/admin/reports/{id}:
+    get:
+      tags:
+      - Admin
+      summary: Get report detail
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: OK
+  /api/admin/reports/{id}/status:
+    post:
+      tags:
+      - Admin
+      summary: Update report status
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminReportStatus'
+      responses:
+        '200':
+          description: OK
+  /api/admin/users:
+    get:
+      tags:
+      - Admin
+      summary: List users
+      responses:
+        '200':
+          description: OK
+  /api/admin/users/{id}:
+    get:
+      tags:
+      - Admin
+      summary: Get user
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: OK
+    put:
+      tags:
+      - Admin
+      summary: Update user
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminUserUpdate'
+      responses:
+        '200':
+          description: OK
+  /api/admin/users/{id}/activate:
+    post:
+      tags:
+      - Admin
+      summary: Activate user
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: OK
+  /api/admin/users/{id}/history:
+    get:
+      tags:
+      - Admin
+      summary: User action history
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: OK
+  /api/admin/users/{id}/suspend:
+    post:
+      tags:
+      - Admin
+      summary: Suspend user
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: OK
+  /api/notifs:
+    get:
+      tags:
+      - Notifications
+      summary: My notifications
+      responses:
+        '200':
+          description: OK
+  /api/notifs/{id}/read:
+    post:
+      tags:
+      - Notifications
+      summary: Mark notification as read
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: OK
+  /api/tokens/confirm:
+    post:
+      tags:
+      - Tokens
+      summary: Buy tokens (confirm)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokensConfirm'
+      responses:
+        '200':
+          description: OK
