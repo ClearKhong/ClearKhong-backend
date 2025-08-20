@@ -19,7 +19,7 @@ router.get('/', async (req, res) => {
   if (tag) {
     ps.push(tag);
     sql += ` AND $${ps.length} = ANY(p.tags)`;
-  } sql += ' ORDER BY promoted DESC, id DESC LIMIT 100';
+  } sql += ' ORDER BY (p.promoted_at IS NOT NULL) DESC, p.promoted_at DESC NULLS LAST, p.created_at DESC LIMIT 100';
   const r=await query(sql,ps); res.json(r.rows); });
 
 router.get('/:id', async (req,res)=>{ const r=await query(`SELECT p.*, u.id AS author_id, u.username AS author_username, u.profile_image_url AS author_profile_image_url FROM posts p JOIN users u ON u.id=p.user_id WHERE p.id=$1`,[req.params.id]);
@@ -42,8 +42,8 @@ router.post('/', requireAuth, upload.array('images', 8), async (req,res)=>{
   const image = JSON.stringify(images)
   if (!title || !description || (!isSell && !isTrade))
     return res.status(400).json({ error: 'Incomplete information' });
-  if (isSell && (price === null || Number.isNaN(price)))
-    return res.status(400).json({ error: 'Must have price' });
+  if (isSell && (price === null || Number.isNaN(price) || price <= 0))
+    return res.status(400).json({ error: 'Price must be a positive number' });
   const r=await query(`INSERT INTO posts (user_id,title,description,price,is_sell,is_trade,tags,image_url,status,promoted) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',false) RETURNING id`,
    [req.user.id,title,description,price,isSell,isTrade,tags,image]);
   res.json({ok:true,postId:r.rows[0].id}); });
@@ -85,7 +85,7 @@ router.post('/:id/promote', requireAuth, async (req,res)=>{
     return res.status(400).json({ error: 'Not enough tokens' });
 
   await query(`UPDATE users SET tokens=tokens-$1 WHERE id=$2`,[cost,req.user.id]);
-  await query(`UPDATE posts SET promoted=true WHERE id=$1`,[id]);
+  await query(`UPDATE posts SET promoted=true, promoted_at=NOW() WHERE id=$1`,[id]);
   res.json({ok:true,tokens:tk-cost});
 });
 export default router;

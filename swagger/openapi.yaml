@@ -120,6 +120,8 @@ components:
           type: number
           format: float
           nullable: true
+        minimum: 0
+        exclusiveMinimum: true
         tags:
           oneOf:
           - type: string
@@ -153,6 +155,8 @@ components:
           type: number
           format: float
           nullable: true
+        minimum: 0
+        exclusiveMinimum: true
         tags:
           oneOf:
           - type: string
@@ -780,3 +784,84 @@ paths:
       responses:
         '200':
           description: OK
+
+  /posts/{id}:
+    delete:
+      summary: Delete a post
+      description: |
+        - เจ้าของโพสต์ลบโพสต์ของตัวเองได้  
+        - Admin ลบโพสต์ใดก็ได้
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Post deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Post deleted successfully"
+        '403':
+          description: Forbidden
+        '404':
+          description: Post not found
+
+
+  /api/posts/{id}:
+    delete:
+      tags: [Posts]
+      summary: Delete post (owner or admin)
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer }
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+        '403':
+          description: Forbidden (not owner or admin)
+        '404':
+          description: Not found
+
+    Post:
+      type: object
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        title: { type: string }
+        description: { type: string }
+        price:
+          type: number
+          format: float
+          nullable: true
+          minimum: 0
+          exclusiveMinimum: true
+        is_sell: { type: boolean }
+        is_trade: { type: boolean }
+        tags:
+          type: array
+          items: { type: string }
+        image_url: { type: string, nullable: true }
+        status: { type: string, enum: [draft, pending, approved, rejected, closed] }
+        promoted: { type: boolean }
+        promoted_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at: { type: string, format: date-time }
