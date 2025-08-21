@@ -118,7 +118,7 @@ components:
           type: number
           format: float
           nullable: true
-          minimum: 0            # (หรือใช้ exclusiveMinimum: 0 ถ้าต้องการ >0 เท่านั้น)
+          minimum: 0)
         tags:
           oneOf:
             - type: string
@@ -153,7 +153,7 @@ components:
           type: number
           format: float
           nullable: true
-          minimum: 0            # (หรือใช้ exclusiveMinimum: 0)
+          minimum: 0
         tags:
           oneOf:
             - type: string
@@ -256,7 +256,6 @@ components:
       example:
         amount: 10
 
-    # ย้ายมาจากท้ายไฟล์เดิม (ห้ามอยู่ใน paths)
     Post:
       type: object
       properties:
