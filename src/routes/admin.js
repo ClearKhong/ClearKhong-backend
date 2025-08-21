@@ -81,7 +81,7 @@ export default router;
 
 router.get('/users/:id', async (req, res) => {
   const id = Number(req.params.id);
-  const r = await query(`SELECT id, username, shop_name, phone, email, address, bio, profile_image_url, tokens, role, is_active FROM users WHERE id=$1`, [id]);
+  const r = await query(`SELECT id, username, phone, email, address, bio, profile_image_url, tokens, role, is_active FROM users WHERE id=$1`, [id]);
   if (!r.rowCount)
     return res.status(404).json({ error: 'not found' });
   res.json(r.rows[0]);
@@ -98,7 +98,7 @@ router.get('/users/:id/history', async (req, res) => {
 
 router.put('/users/:id', upload.single('profileImage'), async (req, res) => {
   const id = Number(req.params.id);
-  const { shopName, phone, email } = req.body;
+  const { phone, email } = req.body;
   const phoneOk = !phone || /^\d{10}$/.test(String(phone));
   const emailOk = !email || String(email).includes('@');
   if (!phoneOk)
@@ -107,13 +107,12 @@ router.put('/users/:id', upload.single('profileImage'), async (req, res) => {
     return res.status(400).json({ error: 'Email must contain @' });
   const img = req.file ? ('/uploads/avatars/' + req.file.filename) : null;
   const r = await query(`UPDATE users 
-    SET shop_name=COALESCE($2, shop_name), 
-        phone=COALESCE($3, phone),
-        email=COALESCE($4, email),
-        profile_image_url=COALESCE($5, profile_image_url)
+    SET phone=COALESCE($2, phone),
+        email=COALESCE($3, email),
+        profile_image_url=COALESCE($4, profile_image_url)
     WHERE id=$1
-    RETURNING id,username,shop_name,phone,email,profile_image_url,tokens,role,is_active`, 
-    [id, shopName || null, phone || null, email || null, img]);
+    RETURNING id,username,phone,email,profile_image_url,tokens,role,is_active`, 
+    [id, phone || null, email || null, img]);
   if (!r.rowCount)
     return res.status(404).json({ error: 'not found' });
   res.json(r.rows[0]);

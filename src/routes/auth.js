@@ -5,7 +5,7 @@ import { query } from '../db.js';
 import dotenv from 'dotenv';
 dotenv.config();
 const router=Router();
-router.post('/register', async (req,res)=>{ try{ const {username,password,shopName,phone,email}=req.body;
+router.post('/register', async (req,res)=>{ try{ const {username,password,phone,email}=req.body;
   const phoneOk = !phone || /^\d{10}$/.test(String(phone));
   const emailOk = !email || String(email).includes('@');
   if (!phoneOk)
@@ -18,7 +18,7 @@ router.post('/register', async (req,res)=>{ try{ const {username,password,shopNa
   if (ex.rowCount)
     return res.status(400).json({ error: 'Username already taken' });
   const hash = await bcrypt.hash(password, 10);
-  const r = await query(`INSERT INTO users (username,password_hash,role,shop_name,phone,email,tokens) VALUES ($1,$2,'user',$3,$4,$5,100) RETURNING id`, [username, hash, shopName || null, phone || null, email || null]);
+  const r = await query(`INSERT INTO users (username,password_hash,role,phone,email,tokens) VALUES ($1,$2,'user',$3,$4,100) RETURNING id`, [username, hash, phone || null, email || null]);
   const token=jwt.sign({id:r.rows[0].id,role:'user'},process.env.JWT_SECRET||'secret',{expiresIn:'7d'});
   res.cookie('token',token,{httpOnly:true,sameSite:'lax',secure:false,maxAge:7*24*3600*1000}); 
   res.json({ ok: true });
