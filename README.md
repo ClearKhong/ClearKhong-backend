@@ -14,3 +14,8 @@
 3. เพิ่มระบบ login ด้วย email/password
 4. การแจ้งเตือนเพิ่มเติม
 5. ฟังก์ชันเพิ่มเติม เช่น การบริจาค การประมูล หรือตามแต่ท่านคิดได้หรือสมาชิกกลุ่มลงความเห็น
+
+## Run Swagger
+npm install
+npm run dev
+go to http://localhost:4000/api-docs
