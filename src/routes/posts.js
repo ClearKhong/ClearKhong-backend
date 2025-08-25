@@ -5,7 +5,9 @@ import fs from 'fs';
 import { query } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 const router=Router();
-const postDir=path.join(process.cwd(),'uploads','posts'); if(!fs.existsSync(postDir)) fs.mkdirSync(postDir,{recursive:true});
+const postDir=path.join(process.cwd(),'uploads','posts'); 
+if(!fs.existsSync(postDir)) 
+  fs.mkdirSync(postDir,{recursive:true});
 const storage=multer.diskStorage({destination:(r,f,cb)=>cb(null,postDir),filename:(r,f,cb)=>cb(null,Date.now()+'-'+Math.round(Math.random()*1e9)+path.extname(f.originalname))});
 const upload=multer({storage});
 const DEFAULT_IMG='https://www.apple.com/v/iphone/home/cc/images/overview/consider_modals/environment/modal_trade_in_variant__ejij0q8th06e_large.jpg';
