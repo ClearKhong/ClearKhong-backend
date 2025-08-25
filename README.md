@@ -18,4 +18,4 @@
 ## Run Swagger  
 npm install  
 npm run dev  
-go to http://localhost:4000/docs
+go to http://127.0.0.1:4000/docs
