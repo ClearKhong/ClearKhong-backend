@@ -45,4 +45,10 @@ app.use('/api/trades', tradesRouter);
 app.use('/api/comments', commentsRouter);
 app.use('/api/notifs', notifsRouter);
 app.use('/api/reports', reportsRouter);
-const PORT=process.env.PORT||4000; app.listen(PORT,()=>console.log('✅ Backend http://127.0.0.1:'+PORT));
+
+app.get('/', (req, res) => {
+  res.send('✅ ClearKhong backend is running. See /docs for API.');
+});
+
+const PORT=process.env.PORT||4000; 
+app.listen(PORT,()=>console.log('✅ Backend http://127.0.0.1:'+PORT));
