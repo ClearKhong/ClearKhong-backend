@@ -18,4 +18,4 @@
 ## Run Swagger  
 npm install  
 npm run dev  
-go to http://localhost:4000/api-docs
+go to http://localhost:4000/docs
