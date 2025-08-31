@@ -5,7 +5,9 @@ import fs from 'fs';
 import { query } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 const router=Router();
-const postDir=path.join(process.cwd(),'uploads','posts'); if(!fs.existsSync(postDir)) fs.mkdirSync(postDir,{recursive:true});
+const postDir=path.join(process.cwd(),'uploads','posts'); 
+if (!fs.existsSync(postDir)) 
+  fs.mkdirSync(postDir,{recursive:true});
 const storage=multer.diskStorage({destination:(r,f,cb)=>cb(null,postDir),filename:(r,f,cb)=>cb(null,Date.now()+'-'+Math.round(Math.random()*1e9)+path.extname(f.originalname))});
 const upload=multer({storage});
 const DEFAULT_IMG='https://www.apple.com/v/iphone/home/cc/images/overview/consider_modals/environment/modal_trade_in_variant__ejij0q8th06e_large.jpg';
@@ -118,13 +120,20 @@ router.put('/:id', requireAuth, upload.array('images', 8), async (req,res)=>{
 
   const sets = []; const ps = [id];
   function push(col, val){ ps.push(val); sets.push(col+'=$'+ps.length); }
-  if(title!==undefined) push('title', title);
-  if(description!==undefined) push('description', description);
-  if(isSell!==null) push('is_sell', isSell);
-  if(isTrade!==null) push('is_trade', isTrade);
-  if(price!==null || req.body.price==='') push('price', price);
-  if(tags!==null) push('tags', tags);
-  if(images) push('image_url', JSON.stringify(images));
+  if (title !== undefined)
+    push('title', title);
+  if (description !== undefined)
+    push('description', description);
+  if (isSell !== null)
+    push('is_sell', isSell);
+  if (isTrade !== null)
+    push('is_trade', isTrade);
+  if (price !== null || req.body.price === '')
+    push('price', price);
+  if (tags !== null)
+    push('tags', tags);
+  if (images)
+    push('image_url', JSON.stringify(images));
   //แก้เสร็จ->pending
   push('status', 'pending');
   if (!sets.length)
@@ -133,16 +142,14 @@ router.put('/:id', requireAuth, upload.array('images', 8), async (req,res)=>{
   res.json(r.rows[0]);
 });
 
-//ลบโพสต์
+//ลบโพสต์ (ลบได้แม้ approved)
 router.delete('/:id', requireAuth, async (req,res)=>{
   const id = Number(req.params.id);
-  const owner = await query(`SELECT user_id, status FROM posts WHERE id=$1`, [id]);
+  const owner = await query(`SELECT user_id FROM posts WHERE id=$1`, [id]);
   if (!owner.rowCount)
     return res.status(404).json({ error: 'not found' });
   if (owner.rows[0].user_id !== req.user.id)
     return res.status(403).json({ error: 'forbidden' });
-  if (owner.rows[0].status === 'approved')
-    return res.status(400).json({ error: 'Cannot delete published post' });
   await query(`DELETE FROM posts WHERE id=$1`, [id]);
   res.json({ok:true});
 });
@@ -173,7 +180,8 @@ router.post('/:id/publish', requireAuth, async (req,res)=>{
 router.post('/:id/resubmit', requireAuth, async (req,res)=>{
   const id = Number(req.params.id);
   const r = await query(`SELECT user_id,status FROM posts WHERE id=$1`, [id]);
-  if(!r.rowCount) return res.status(404).json({error:'not found'});
+  if (!r.rowCount)
+    return res.status(404).json({ error: 'not found' });
   const row = r.rows[0];
   if (row.user_id !== req.user.id)
     return res.status(403).json({ error: 'forbidden' });

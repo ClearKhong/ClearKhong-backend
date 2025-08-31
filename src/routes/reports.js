@@ -23,7 +23,10 @@ router.post('/', requireAuth, upload.array('images', 8), async (req,res)=>{
     const { target_user_id, details } = req.body;
     if (!target_user_id)
       return res.status(400).json({ error: 'target_user_id required' });
-
+    // ห้ามรายงานตัวเอง
+    if (Number(target_user_id) === req.user.id) {
+      return res.status(400).json({ error: 'cannot report yourself' });
+    }
     //เหตุผล
     let reasons = req.body.reasons;
     if (Array.isArray(reasons))
@@ -36,7 +39,7 @@ router.post('/', requireAuth, upload.array('images', 8), async (req,res)=>{
     const filesArr = (req.files||[]).map(f=>f.filename);
     const imagesJson = JSON.stringify(filesArr);
 
-    const type = 'user'; // IMPORTANT: satisfy NOT NULL type columns
+    const type = 'user';
 
     const r = await query(
       'INSERT INTO reports (reporter_id,target_user_id,type,reasons,details,images) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
