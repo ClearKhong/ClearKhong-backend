@@ -6,7 +6,11 @@ import { query } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 const router=Router();
 const postDir=path.join(process.cwd(),'uploads','posts'); 
-if (!fs.existsSync(postDir)) 
+<<<<<<< HEAD
+if(!fs.existsSync(postDir)) 
+=======
+if(!fs.existsSync(postDir)) 
+>>>>>>> e993a02590645d7320c29727e5ed51dd229b0f5f
   fs.mkdirSync(postDir,{recursive:true});
 const storage=multer.diskStorage({destination:(r,f,cb)=>cb(null,postDir),filename:(r,f,cb)=>cb(null,Date.now()+'-'+Math.round(Math.random()*1e9)+path.extname(f.originalname))});
 const upload=multer({storage});
