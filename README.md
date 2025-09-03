@@ -17,8 +17,3 @@
 1. ปรับปรุงระบบ Authen
 2. เพิ่มการกรอกชื่อจริง
 3. เพิ่มระบบ login ด้วย email/password
-
-## Run Swagger  
-npm install  
-npm run dev  
-go to http://127.0.0.1:4000/docs
