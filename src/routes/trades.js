@@ -11,6 +11,7 @@ if (!fs.existsSync(tradeDir))
 const storage=multer.diskStorage({destination:(r,f,cb)=>cb(null,tradeDir),filename:(r,f,cb)=>cb(null,Date.now()+'-'+Math.round(Math.random()*1e9)+path.extname(f.originalname))});
 const upload=multer({storage});
 
+// ดึงข้อเสนอการเทรดทั้งหมดของโพสต์ (ต้องล็อกอิน)
 router.get('/:postId', requireAuth, async (req,res)=>{
   const pid=Number(req.params.postId);
   const post = await query('SELECT user_id FROM posts WHERE id=$1', [pid]);
@@ -28,6 +29,7 @@ router.get('/:postId', requireAuth, async (req,res)=>{
   res.json({offers:r.rows, isOwner});
 });
 
+// สร้างข้อเสนอการเทรดใหม่ (อัปโหลดรูปได้ ต้องล็อกอิน)
 router.post('/:postId', requireAuth, upload.array('images', 6), async (req,res)=>{
   const pid=Number(req.params.postId);
   const post = await query('SELECT user_id, status FROM posts WHERE id=$1', [pid]);
@@ -45,6 +47,7 @@ router.post('/:postId', requireAuth, upload.array('images', 6), async (req,res)=
   res.json({ok:true, id:r.rows[0].id});
 });
 
+// เจ้าของโพสต์ยอมรับข้อเสนอการเทรด (ต้องล็อกอิน)
 router.post('/:postId/accept/:offerId', requireAuth, async (req,res)=>{
   const pid = Number(req.params.postId);
   const oid = Number(req.params.offerId);
@@ -64,4 +67,5 @@ router.post('/:postId/accept/:offerId', requireAuth, async (req,res)=>{
   }
   res.json({ok:true});
 });
+
 export default router;

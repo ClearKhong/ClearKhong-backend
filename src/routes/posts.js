@@ -12,6 +12,7 @@ const storage=multer.diskStorage({destination:(r,f,cb)=>cb(null,postDir),filenam
 const upload=multer({storage});
 const DEFAULT_IMG='https://www.apple.com/v/iphone/home/cc/images/overview/consider_modals/environment/modal_trade_in_variant__ejij0q8th06e_large.jpg';
 
+// ดึงโพสต์ทั้งหมด (ค้นหา/กรองได้)
 router.get('/', async (req, res) => {
   const { q, tag } = req.query;
   let sql = `SELECT p.*,u.username FROM posts p JOIN users u ON u.id=p.user_id WHERE status='approved'`;
@@ -24,11 +25,13 @@ router.get('/', async (req, res) => {
   } sql += ' ORDER BY (p.promoted_at IS NOT NULL) DESC, p.promoted_at DESC NULLS LAST, p.created_at DESC LIMIT 100';
   const r=await query(sql,ps); res.json(r.rows); });
 
+// ดึงรายละเอียดโพสต์ตาม id
 router.get('/:id', async (req,res)=>{ const r=await query(`SELECT p.*, u.id AS author_id, u.username AS author_username, u.profile_image_url AS author_profile_image_url FROM posts p JOIN users u ON u.id=p.user_id WHERE p.id=$1`,[req.params.id]);
   if (!r.rowCount)
     return res.status(404).json({ error: 'not found' }); res.json(r.rows[0]);
 });
 
+// สร้างโพสต์ใหม่ (อัปโหลดรูปได้ ต้องล็อกอิน)
 router.post('/', requireAuth, upload.array('images', 8), async (req,res)=>{
   const { title, description } = req.body;
   const isSell = ['true', 'on', '1', 'yes'].includes(String(req.body.is_sell).toLowerCase());
@@ -50,6 +53,7 @@ router.post('/', requireAuth, upload.array('images', 8), async (req,res)=>{
    [req.user.id,title,description,price,isSell,isTrade,tags,image]);
   res.json({ok:true,postId:r.rows[0].id}); });
 
+// ยืนยันการซื้อโพสต์ (ต้องล็อกอิน)
 router.post('/:id/confirm', requireAuth, async (req,res)=>{
   const pid=Number(req.params.id);
   // ห้ามซื้อของโพสต์ตัวเอง
@@ -67,6 +71,7 @@ router.post('/:id/confirm', requireAuth, async (req,res)=>{
   res.json({ok:true});
 });
 
+// โปรโมทโพสต์ (ต้องล็อกอิน)
 router.post('/:id/promote', requireAuth, async (req,res)=>{
   const id = Number(req.params.id);
   const cost = 20;
@@ -91,7 +96,8 @@ router.post('/:id/promote', requireAuth, async (req,res)=>{
   res.json({ok:true,tokens:tk-cost});
 });
 export default router;
-//แก้โพสต์
+
+// แก้ไขโพสต์ (อัปโหลดรูปใหม่ได้ ต้องล็อกอิน)
 router.put('/:id', requireAuth, upload.array('images', 8), async (req,res)=>{
   const id = Number(req.params.id);
   const owner = await query(`SELECT user_id, status FROM posts WHERE id=$1`, [id]);
@@ -142,7 +148,7 @@ router.put('/:id', requireAuth, upload.array('images', 8), async (req,res)=>{
   res.json(r.rows[0]);
 });
 
-//ลบโพสต์ (ลบได้แม้ approved)
+// ลบโพสต์ (ต้องล็อกอิน)
 router.delete('/:id', requireAuth, async (req,res)=>{
   const id = Number(req.params.id);
   const owner = await query(`SELECT user_id FROM posts WHERE id=$1`, [id]);
@@ -154,7 +160,7 @@ router.delete('/:id', requireAuth, async (req,res)=>{
   res.json({ok:true});
 });
 
-//ยืนยันโพสต์
+// ยืนยันโพสต์ (publish) หลังรออนุมัติ (ต้องล็อกอิน)
 router.post('/:id/publish', requireAuth, async (req,res)=>{
   const id = Number(req.params.id);
   const r = await query(`SELECT user_id,status FROM posts WHERE id=$1`, [id]);
@@ -176,7 +182,7 @@ router.post('/:id/publish', requireAuth, async (req,res)=>{
   res.json({ok:true, tokens: tk - cost});
 });
 
-//ส่งใหม่
+// ส่งโพสต์ที่ถูกปฏิเสธใหม่ (resubmit) (ต้องล็อกอิน)
 router.post('/:id/resubmit', requireAuth, async (req,res)=>{
   const id = Number(req.params.id);
   const r = await query(`SELECT user_id,status FROM posts WHERE id=$1`, [id]);

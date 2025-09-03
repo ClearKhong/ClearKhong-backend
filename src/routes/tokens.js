@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { query } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 const router=Router();
+// เติมเหรียญ (tokens) ให้กับบัญชีผู้ใช้ (ต้องล็อกอิน)
 router.post('/confirm', requireAuth, async (req,res)=>{ const amount=Number(req.body.amount||0);
   if (![5, 10, 20, 50, 100, 500].includes(amount))
     return res.status(400).json({ error: 'Incorrect package' });

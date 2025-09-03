@@ -17,7 +17,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-//สร้างรีพอร์ต
+// สร้างรายงาน (report) ผู้ใช้ใหม่ (ต้องล็อกอิน อัปโหลดรูปได้)
 router.post('/', requireAuth, upload.array('images', 8), async (req,res)=>{
   try{
     const { target_user_id, details } = req.body;
@@ -58,4 +58,5 @@ router.post('/', requireAuth, upload.array('images', 8), async (req,res)=>{
     res.status(500).json({ error: 'failed to create report' });
   }
 });
+
 export default router;

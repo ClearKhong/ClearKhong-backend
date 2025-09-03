@@ -11,14 +11,15 @@ if (!fs.existsSync(avatarDir))
 const storage = multer.diskStorage({ destination: (r, f, cb) => cb(null, avatarDir), filename: (r, f, cb) => cb(null, Date.now() + '-' + Math.round(Math.random() * 1e9) + path.extname(f.originalname)) });
 const upload = multer({ storage });
 
-// โปรไฟล์สาธารณะ: อ่านโปรไฟล์ผู้ใช้คนอื่น + โพสต์ล่าสุด (ไม่ต้องล็อกอิน)
+// ดึงโปรไฟล์สาธารณะของผู้ใช้คนอื่น พร้อมโพสต์ล่าสุด (ไม่ต้องล็อกอิน)
 router.get('/public/:id', async (req, res) => {
   const uid = req.params.id;
   const u = await query(
     `SELECT id, username, phone, email,bio, profile_image_url FROM users WHERE id=$1`,
     [uid]
   );
-  if (!u.rowCount) return res.status(404).json({ error: 'user not found' });
+  if (!u.rowCount)
+    return res.status(404).json({ error: 'user not found' });
   const posts = await query(
     `SELECT id, title, status, created_at
        FROM posts
@@ -29,11 +30,12 @@ router.get('/public/:id', async (req, res) => {
   );
   res.json({ user: u.rows[0], recentPosts: posts.rows });
 });
+// ดึงข้อมูลโปรไฟล์ของตัวเอง (ต้องล็อกอิน)
 router.get('/me', requireAuth, async (req, res) => {
   const r = await query(`SELECT id,username,phone,email,address,bio,profile_image_url,tokens,role FROM users WHERE id=$1`, [req.user.id]);
   res.json(r.rows[0]);
 });
-//อัพเดตโปรไฟล์
+// อัปเดตโปรไฟล์ของตัวเอง (ต้องล็อกอิน อัปโหลดรูปได้)
 router.put('/me', requireAuth, upload.single('profileImage'), async (req, res) => {
   const { phone, email, address, bio } = req.body;
   const phoneOk = !phone || /^\d{10}$/.test(String(phone));
@@ -54,7 +56,7 @@ router.put('/me', requireAuth, upload.single('profileImage'), async (req, res) =
     [req.user.id, phone || null, email || null, address || null, bio || null, img]);
   res.json(r.rows[0]);
 });
-//ประวัติ
+// ดึงประวัติการใช้งานของตัวเอง (โพสต์, ซื้อ, เทรด) (ต้องล็อกอิน)
 router.get('/history', requireAuth, async (req,res)=>{ const myPosts=await query(`SELECT id,title,status,promoted,created_at FROM posts WHERE user_id=$1 ORDER BY created_at DESC`,[req.user.id]);
   const buys = await query(`SELECT pu.id,pu.post_id,pu.amount,pu.status,pu.created_at,p.title FROM purchases pu JOIN posts p ON p.id=pu.post_id WHERE pu.buyer_id=$1 ORDER BY pu.created_at DESC`, [req.user.id])
   const trades = await query(

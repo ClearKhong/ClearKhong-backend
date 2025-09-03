@@ -5,6 +5,7 @@ import { query } from '../db.js';
 import dotenv from 'dotenv';
 dotenv.config();
 const router=Router();
+// สมัครสมาชิกใหม่ (Register)
 router.post('/register', async (req,res)=>{ try{ const {username,password,phone,email}=req.body;
   const phoneOk = !phone || /^\d{10}$/.test(String(phone));
   const emailOk = !email || String(email).includes('@');
@@ -26,6 +27,7 @@ router.post('/register', async (req,res)=>{ try{ const {username,password,phone,
   res.status(500).json({ error: 'server error' });
 }
 });
+// เข้าสู่ระบบ (Login)
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -42,6 +44,7 @@ router.post('/login', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+// ออกจากระบบ (Logout)
 router.post('/logout', (req, res) => {
   res.clearCookie('token', { path: '/' });
   res.json({ ok: true });
