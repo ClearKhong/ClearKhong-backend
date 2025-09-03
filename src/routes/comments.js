@@ -1,11 +1,9 @@
-
 import { Router } from 'express';
 import { query } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
-// GET /api/comments/:postId  -> flat list (includes parent_comment_id)
 router.get('/:postId', async (req, res) => {
   const postId = Number(req.params.postId);
   if (!Number.isInteger(postId)) return res.status(400).json({ error: 'invalid postId' });
@@ -21,8 +19,6 @@ router.get('/:postId', async (req, res) => {
   res.json(r.rows);
 });
 
-// POST /api/comments/:postId  -> create comment or reply
-// body: { body: string, parent_comment_id?: number|null }
 router.post('/:postId', requireAuth, async (req, res) => {
   const postId = Number(req.params.postId);
   if (!Number.isInteger(postId)) return res.status(400).json({ error: 'invalid postId' });
@@ -37,14 +33,12 @@ router.post('/:postId', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'invalid parent_comment_id' });
   }
 
-  // Ensure post exists and comments allowed
   const st = await query(`SELECT status FROM posts WHERE id=$1`, [postId]);
   if (!st.rowCount) return res.status(404).json({ error: 'post not found' });
   if (st.rows[0].status === 'pending' || st.rows[0].status === 'waiting') {
     return res.status(400).json({ error: 'Comments are disabled for this post status' });
   }
 
-  // When replying, ensure the parent comment exists and belongs to same post
   if (parentId !== null) {
     const pr = await query(`SELECT post_id FROM comments WHERE id=$1`, [parentId]);
     if (!pr.rowCount) return res.status(404).json({ error: 'parent comment not found' });
