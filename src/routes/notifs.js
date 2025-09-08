@@ -4,7 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 const router=Router();
 // ดึงการแจ้งเตือน (notifications) ล่าสุดของผู้ใช้ (ต้องล็อกอิน)
 router.get('/', requireAuth, async (req,res)=>{
-  const r=await query(`SELECT id,message,created_at,read FROM notifications WHERE user_id=$1 ORDER BY id DESC LIMIT 100`,[req.user.id]);
+  const r=await query(`SELECT id,message,created_at,read FROM notifications WHERE user_id=$1 ORDER BY id DESC`,[req.user.id]);
   res.json(r.rows);
 });
 // ตั้งค่าสถานะการแจ้งเตือนว่าอ่านแล้ว (read) (ต้องล็อกอิน)
