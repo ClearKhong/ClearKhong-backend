@@ -13,7 +13,8 @@ async function upsertUser(username, role = 'user') {
      RETURNING id`,
     [username, hash, role]
   );
-  if (inserted.rows.length) return inserted.rows[0].id;
+  if (inserted.rows.length)
+    return inserted.rows[0].id;
   const r = await query('SELECT id FROM users WHERE username=$1', [username]);
   return r.rows[0].id;
 }
@@ -74,7 +75,7 @@ async function run() {
   ];
   for (const p of posts) await insertPostIfNotExists(p);
 
-  console.log('✅ Seeded (non-destructive, idempotent)');
+  console.log('✅ Seeded database');
 }
 
 run().catch(console.error).finally(() => pool.end());
