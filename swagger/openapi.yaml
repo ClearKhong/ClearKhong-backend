@@ -2,7 +2,6 @@ openapi: 3.0.3
 info:
   title: ClearKhong API
   version: "1.3.0"
-  description: "All endpoints per screenshots with readable examples and big-section tags."
 servers:
   - url: http://127.0.0.1:4000
 tags:
@@ -83,9 +82,9 @@ components:
           format: email
       example:
         username: diana
-        password: P@ssw0rd!
+        password: diana
         phone: 0912345678
-        email: diana@example.com
+        email: diana@gmail.com
     AuthLogin:
       type: object
       required:
@@ -118,7 +117,7 @@ components:
           format: binary
       example:
         phone: 0912345678
-        email: diana@example.com
+        email: diana@gmail.com
         address: 99/1 ถนนสุขุมวิท กรุงเทพฯ 10110
         bio: รับซื้อ-ขาย จ.-ศ. 10:00-18:00
     PostCreate:

@@ -30,7 +30,7 @@ router.get('/:postId', requireAuth, async (req,res)=>{
 });
 
 // สร้างข้อเสนอการเทรดใหม่ (อัปโหลดรูปได้ ต้องล็อกอิน)
-router.post('/:postId', requireAuth, upload.array('images', 6), async (req,res)=>{
+router.post('/:postId', requireAuth, upload.array('images', 10), async (req,res)=>{
   const pid=Number(req.params.postId);
   const post = await query('SELECT user_id, status FROM posts WHERE id=$1', [pid]);
   if (!post.rowCount)
