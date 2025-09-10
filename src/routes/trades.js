@@ -11,7 +11,7 @@ if (!fs.existsSync(tradeDir))
 const storage=multer.diskStorage({destination:(r,f,cb)=>cb(null,tradeDir),filename:(r,f,cb)=>cb(null,Date.now()+'-'+Math.round(Math.random()*1e9)+path.extname(f.originalname))});
 const upload=multer({storage});
 
-// ดึงข้อเสนอการเทรดทั้งหมดของโพสต์ (ต้องล็อกอิน)
+// ดึงข้อเสนอการเทรดทั้งหมดของโพสต์
 router.get('/:postId', requireAuth, async (req,res)=>{
   const pid=Number(req.params.postId);
   const post = await query('SELECT user_id FROM posts WHERE id=$1', [pid]);
@@ -29,14 +29,18 @@ router.get('/:postId', requireAuth, async (req,res)=>{
   res.json({offers:r.rows, isOwner});
 });
 
-// สร้างข้อเสนอการเทรดใหม่ (อัปโหลดรูปได้ ต้องล็อกอิน)
+// สร้างข้อเสนอการเทรดใหม่
 router.post('/:postId', requireAuth, upload.array('images', 10), async (req,res)=>{
   const pid=Number(req.params.postId);
-  const post = await query('SELECT user_id, status FROM posts WHERE id=$1', [pid]);
+  const post = await query('SELECT user_id, status, is_trade FROM posts WHERE id=$1', [pid]);
   if (!post.rowCount)
     return res.status(404).json({ error: 'not found' });
   if (post.rows[0].status !== 'approved')
     return res.status(400).json({ error: 'The post is not ready for trading yet.' });
+  if (post.rows[0].user_id === req.user.id)
+    return res.status(400).json({ error: 'cannot offer trade on your own post' });
+  if (!post.rows[0].is_trade)
+    return res.status(400).json({ error: 'this post does not accept trades' });
   const desc = req.body.description || '';
   const imgs = (req.files && req.files.length) ? req.files.map(f=>('/uploads/trades/'+f.filename)) : [];
   const img = JSON.stringify(imgs)
@@ -47,24 +51,27 @@ router.post('/:postId', requireAuth, upload.array('images', 10), async (req,res)
   res.json({ok:true, id:r.rows[0].id});
 });
 
-// เจ้าของโพสต์ยอมรับข้อเสนอการเทรด (ต้องล็อกอิน)
+// เจ้าของโพสต์ยอมรับข้อเสนอการเทรด
 router.post('/:postId/accept/:offerId', requireAuth, async (req,res)=>{
   const pid = Number(req.params.postId);
   const oid = Number(req.params.offerId);
-  const post = await query('SELECT user_id FROM posts WHERE id=$1', [pid]);
+  const post = await query('SELECT user_id, status, is_trade FROM posts WHERE id=$1', [pid]);
   if (!post.rowCount)
     return res.status(404).json({ error: 'not found' });
   if (post.rows[0].user_id !== req.user.id)
     return res.status(403).json({ error: 'forbidden' });
+  if (post.rows[0].status !== 'approved' || !post.rows[0].is_trade)
+    return res.status(400).json({ error: 'post is not tradable' });
+  const offer=await query('SELECT proposer_id, status FROM trades WHERE id=$1 AND post_id=$2',[oid,pid]);
+  if (!offer.rowCount)
+    return res.status(404).json({ error: 'offer not found' });
+  if (offer.rows[0].status !== 'pending')
+    return res.status(400).json({ error: 'offer not pending' });
   await query('UPDATE trades SET status=$1 WHERE id=$2 AND post_id=$3',['accepted',oid,pid]);
   await query('UPDATE posts SET status=$1 WHERE id=$2',['closed',pid]);
-  // แจ้งเตือนผู้เทรดทั้งคู่
-  const offer=await query('SELECT proposer_id FROM trades WHERE id=$1',[oid]);
-  if(offer.rowCount){
-    const proposer=offer.rows[0].proposer_id;
-    await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2),($3,$4)`,
-      [proposer,'Your trade offer has been confirmed.', req.user.id, 'You have successfully confirmed the trade.']);
-  }
+
+  await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2),($3,$4)`,
+    [offer.rows[0].proposer_id,'Your trade offer has been confirmed.', req.user.id, 'You have successfully confirmed the trade.']);
   res.json({ok:true});
 });
 
