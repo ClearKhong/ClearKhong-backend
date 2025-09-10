@@ -495,7 +495,6 @@ paths:
         - Posts
       summary: Delete my post
       description: "Delete a post by ID. The owner can delete the post even if it's pending/approved/published. Deletion removes the post from the database; related rows with FK ON DELETE CASCADE will be removed automatically."
-
       parameters:
         - in: path
           name: id
@@ -628,6 +627,9 @@ paths:
       tags:
         - Trades
       summary: Create trade offer
+      description: >
+        Create a trade offer on a post that is **approved** and **accepts trades** (`is_trade=true`).
+        You **cannot** submit an offer to your own post.
       parameters:
         - in: path
           name: postId
@@ -642,12 +644,50 @@ paths:
               $ref: "#/components/schemas/TradeCreate"
       responses:
         "200":
-          description: OK
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  id:
+                    type: integer
+                    example: 42
+        "400":
+          description: >
+            Bad request (post not ready for trading / post does not accept trades / cannot offer trade on your own post)
+          content:
+            application/json:
+              examples:
+                notReady:
+                  summary: post not approved
+                  value:
+                    error: The post is not ready for trading yet.
+                noTrade:
+                  summary: post does not accept trades
+                  value:
+                    error: this post does not accept trades
+                selfOffer:
+                  summary: cannot trade on own post
+                  value:
+                    error: cannot offer trade on your own post
+        "404":
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/trades/{postId}/accept/{offerId}:
     post:
       tags:
         - Trades
       summary: Accept trade offer
+      description: >
+        Accept a pending trade offer on your own post. The post must still be **approved** and **is_trade=true**.
+        Only the post owner can accept. Offer must be **pending**.
       parameters:
         - in: path
           name: postId
@@ -662,6 +702,40 @@ paths:
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+        "400":
+          description: >
+            Bad request (post is not tradable / offer not pending)
+          content:
+            application/json:
+              examples:
+                notTradable:
+                  summary: post not tradable
+                  value:
+                    error: post is not tradable
+                notPending:
+                  summary: offer not pending
+                  value:
+                    error: offer not pending
+        "403":
+          description: Forbidden (not post owner)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found (post or offer)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/reports:
     post:
       tags:

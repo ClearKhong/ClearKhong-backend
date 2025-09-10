@@ -17,11 +17,11 @@ END $$;
 -- 2. USERS
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
-  username VARCHAR(50) UNIQUE NOT NULL,
+  username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
-  role VARCHAR(10) NOT NULL DEFAULT 'user',
+  role TEXT NOT NULL DEFAULT 'user',
   phone VARCHAR(10),
-  email VARCHAR(50),
+  email TEXT,
   profile_image_url TEXT,
   tokens INTEGER NOT NULL DEFAULT 100,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -35,7 +35,7 @@ ALTER TABLE public.users
 CREATE TABLE IF NOT EXISTS posts (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  title VARCHAR(120) NOT NULL,
+  title TEXT NOT NULL,
   description TEXT NOT NULL,
   price NUMERIC(12,2),
   is_sell BOOLEAN NOT NULL DEFAULT FALSE,
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS purchases (
   post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
   buyer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   amount NUMERIC(12,2) NOT NULL,
-  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  status TEXT NOT NULL DEFAULT 'pending',
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS trades (
   proposer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   description TEXT,
   image_url TEXT,
-  status VARCHAR(12) NOT NULL DEFAULT 'pending',
+  status TEXT NOT NULL DEFAULT 'pending',
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
@@ -144,12 +144,12 @@ CREATE TABLE IF NOT EXISTS reports (
   reasons TEXT,
   details TEXT,
   images TEXT,
-  status VARCHAR(20) NOT NULL DEFAULT 'open',
+  status TEXT NOT NULL DEFAULT 'open',
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS details    TEXT;
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS images     TEXT;
-ALTER TABLE reports ADD COLUMN IF NOT EXISTS status     VARCHAR(20) NOT NULL DEFAULT 'open';
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS status     TEXT NOT NULL DEFAULT 'open';
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS created_at TIMESTAMP  NOT NULL DEFAULT NOW();
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS reasons    TEXT;
 UPDATE reports SET reasons = '' WHERE reasons IS NULL;
