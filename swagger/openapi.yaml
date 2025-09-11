@@ -83,7 +83,7 @@ components:
       example:
         username: diana
         password: diana
-        phone: 0912345678
+        phone: "0912345678"
         email: diana@gmail.com
     AuthLogin:
       type: object
@@ -98,7 +98,7 @@ components:
           format: password
       example:
         username: diana
-        password: P@ssw0rd!
+        password: diana
     ProfileUpdate:
       type: object
       properties:

@@ -3,7 +3,8 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname='post_status') THEN
     CREATE TYPE post_status AS ENUM ('draft','pending','approved','rejected','closed');
   END IF;
-END $$;
+END
+$$ LANGUAGE plpgsql;
 
 DO $$ BEGIN
   IF NOT EXISTS (
@@ -12,7 +13,8 @@ DO $$ BEGIN
   ) THEN
     ALTER TYPE post_status ADD VALUE 'waiting';
   END IF;
-END $$;
+END
+$$ LANGUAGE plpgsql;
 
 -- 2. USERS
 CREATE TABLE IF NOT EXISTS users (
@@ -47,7 +49,7 @@ CREATE TABLE IF NOT EXISTS posts (
   promoted_at TIMESTAMP NULL,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
-ALTER TABLE public.posts
+-- ALTER TABLE public.posts
   -- ADD COLUMN IF NOT EXISTS approved_by     INTEGER REFERENCES public.users(id) ON DELETE SET NULL,
   -- ADD COLUMN IF NOT EXISTS approved_at     TIMESTAMPTZ,
   -- ADD COLUMN IF NOT EXISTS rejected_by     INTEGER REFERENCES public.users(id) ON DELETE SET NULL,
@@ -64,7 +66,8 @@ BEGIN
   UPDATE posts SET promoted_at = NOW()
   WHERE promoted = TRUE AND promoted_at IS NULL;
   CREATE INDEX IF NOT EXISTS idx_posts_promoted_at_desc ON posts (promoted_at DESC NULLS LAST);
-END $$;
+END
+$$ LANGUAGE plpgsql;
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -73,7 +76,8 @@ BEGIN
   ) THEN
     CREATE UNIQUE INDEX uniq_posts_user_title ON public.posts(user_id, title);
   END IF;
-END $$;
+END
+$$ LANGUAGE plpgsql;
 DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint WHERE conname = 'chk_posts_price_positive'
@@ -82,7 +86,8 @@ DO $$ BEGIN
     ADD CONSTRAINT chk_posts_price_positive
     CHECK (price IS NULL OR price > 0);
   END IF;
-END $$;
+END
+$$ LANGUAGE plpgsql;
 
 -- 4. PURCHASES
 CREATE TABLE IF NOT EXISTS purchases (
@@ -122,7 +127,8 @@ DO $$ BEGIN
       ADD COLUMN parent_comment_id INTEGER REFERENCES comments(id) ON DELETE CASCADE;
     CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments (parent_comment_id);
   END IF;
-END $$;
+END
+$$ LANGUAGE plpgsql;
 
 -- 7. NOTIFICATIONS
 CREATE TABLE IF NOT EXISTS notifications (
@@ -183,4 +189,5 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname='idx_seller_reviews_reviewer') THEN
     CREATE INDEX idx_seller_reviews_reviewer ON seller_reviews(reviewer_id);
   END IF;
-END $$;
+END
+$$ LANGUAGE plpgsql;
