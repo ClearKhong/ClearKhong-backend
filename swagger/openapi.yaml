@@ -633,6 +633,7 @@ paths:
       responses:
         "200":
           description: OK
+  /api/trades/{postId}/new:
     post:
       tags:
         - Trades
@@ -652,6 +653,66 @@ paths:
           multipart/form-data:
             schema:
               $ref: "#/components/schemas/TradeCreate"
+      responses:
+        "200":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  id:
+                    type: integer
+                    example: 42
+        "400":
+          description: >
+            Bad request (post not ready for trading / post does not accept trades / cannot offer trade on your own post)
+          content:
+            application/json:
+              examples:
+                notReady:
+                  summary: post not approved
+                  value:
+                    error: The post is not ready for trading yet.
+                noTrade:
+                  summary: post does not accept trades
+                  value:
+                    error: this post does not accept trades
+                selfOffer:
+                  summary: cannot trade on own post
+                  value:
+                    error: cannot offer trade on your own post
+        "404":
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/trades/{postId}/reuse/{tradeId}:
+    post:
+      tags:
+        - Trades
+      summary: Reuse an existing trade offer
+      description: >
+        Reuse a previous pending trade offer and apply it to another post that is
+        **approved** and **accepts trades** (`is_trade=true`).
+        You **cannot** submit an offer to your own post.
+      parameters:
+        - in: path
+          name: postId
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: tradeId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
       responses:
         "200":
           description: Created
