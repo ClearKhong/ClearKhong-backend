@@ -226,6 +226,8 @@ components:
     TradeCreate:
       type: object
       properties:
+        title:
+          type: string
         description:
           type: string
         images:
@@ -634,7 +636,7 @@ paths:
     post:
       tags:
         - Trades
-      summary: Create trade offer 1
+      summary: Create trade offer
       description: >
         Create a trade offer on a post that is **approved** and **accepts trades** (`is_trade=true`).
         You **cannot** submit an offer to your own post.

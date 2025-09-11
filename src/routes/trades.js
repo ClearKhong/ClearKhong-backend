@@ -61,7 +61,7 @@ router.get('/:postId', requireAuth, async (req,res)=>{
 
 // สร้างข้อเสนอการเทรดใหม่
 router.post('/:postId', requireAuth, upload.array('images', 10), async (req,res)=>{
-  const pid=Number(req.params.postId);
+  const pid = Number(req.params.postId);
   const post = await query('SELECT user_id, status, is_trade FROM posts WHERE id=$1', [pid]);
   if (!post.rowCount)
     return res.status(404).json({ error: 'not found' });
@@ -71,15 +71,22 @@ router.post('/:postId', requireAuth, upload.array('images', 10), async (req,res)
     return res.status(400).json({ error: 'cannot offer trade on your own post' });
   if (!post.rows[0].is_trade)
     return res.status(400).json({ error: 'this post does not accept trades' });
-  const desc = req.body.description || '';
-  const imgs = (req.files && req.files.length) ? req.files.map(f=>('/uploads/trades/'+f.filename)) : [];
-  const img = JSON.stringify(imgs)
-  const r=await query(`INSERT INTO trades (post_id,proposer_id,description,image_url,status) VALUES ($1,$2,$3,$4,'pending') RETURNING id`,
-    [pid, req.user.id, desc, img]);
+
+  const { title, description } = req.body;
+  const imgs = (req.files && req.files.length) ? req.files.map(f => '/uploads/trades/' + f.filename) : [];
+  const img = JSON.stringify(imgs);
+
+  const r = await query(
+    `INSERT INTO trades (post_id, proposer_id, title, description, image_url, status) 
+     VALUES ($1,$2,$3,$4,$5,'pending') RETURNING id`,
+    [pid, req.user.id, title, description, img] 
+  );
+
   // แจ้งเตือนผู้ขาย
-  await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2)`,[post.rows[0].user_id,'New offer for trading']);
+  await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2)`, [post.rows[0].user_id,'New offer for trading']);
   res.json({ok:true, id:r.rows[0].id});
 });
+
 
 // เจ้าของโพสต์ยอมรับข้อเสนอการเทรด
 router.post('/:postId/accept/:offerId', requireAuth, async (req,res)=>{
