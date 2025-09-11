@@ -41,7 +41,6 @@ router.get('/my-trades',requireAuth ,async (req, res) => {
   res.json({ trades });
 });
 
-
 // สร้างข้อเสนอการเทรดใหม่
 router.post('/:postId/new', requireAuth, upload.array('images', 10), async (req,res)=>{
   const pid = Number(req.params.postId);
@@ -132,6 +131,26 @@ router.get('/:postId', requireAuth, async (req,res)=>{
   sql+=' ORDER BY id DESC';
   const r=await query(sql, params);
   res.json({offers:r.rows, isOwner});
+});
+ 
+// ลบข้อเสนอการเทรดทั้งหมด (โดยผู้เสนอเทรด)
+router.delete('/:tradeId', requireAuth, async (req, res) => {
+  const tradeId = Number(req.params.tradeId);
+
+  if (isNaN(tradeId)) {
+    return res.status(400).json({ error: 'Invalid trade ID5' });
+  }
+
+  const tradeRes = await query('SELECT id, proposer_id FROM trades WHERE id=$1', [tradeId]);
+  if (!tradeRes.rowCount) return res.status(404).json({ error: 'Trade not found' });
+
+  const trade = tradeRes.rows[0];
+  if (trade.proposer_id !== req.user.id) 
+    return res.status(403).json({ error: 'You cannot delete this trade' });
+
+  await query('DELETE FROM trades WHERE id=$1', [tradeId]);
+
+  res.json({ ok: true, message: 'Trade deleted successfully' });
 });
 
 // เจ้าของโพสต์ยอมรับข้อเสนอการเทรด

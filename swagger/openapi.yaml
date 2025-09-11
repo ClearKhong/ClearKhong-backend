@@ -751,6 +751,63 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/trades/{tradeId}:
+    delete:
+        tags:
+          - Trades
+        summary: Delete a trade completely
+        description: Delete a trade and all its associated post relations. Only the proposer can delete their trade.
+        parameters:
+          - in: path
+            name: tradeId
+            required: true
+            schema:
+              type: integer
+            description: ID of the trade to delete
+        responses:
+          '200':
+            description: Trade deleted successfully
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    ok:
+                      type: boolean
+                      example: true
+                    message:
+                      type: string
+                      example: Trade deleted successfully
+          '400':
+            description: Invalid request
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    error:
+                      type: string
+                      example: Invalid trade ID
+          '403':
+            description: Forbidden
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    error:
+                      type: string
+                      example: You cannot delete this trade
+          '404':
+            description: Trade not found
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    error:
+                      type: string
+                      example: Trade not found
   /api/trades/{postId}/accept/{offerId}:
     post:
       tags:
