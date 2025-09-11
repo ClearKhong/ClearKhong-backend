@@ -609,6 +609,14 @@ paths:
       responses:
         "200":
           description: OK
+  /api/trades/my-trades:
+    get:
+      tags:
+        - Trades
+      summary: List my pending trades 
+      responses:
+        "200":
+          description: OK
   /api/trades/{postId}:
     get:
       tags:
@@ -626,7 +634,7 @@ paths:
     post:
       tags:
         - Trades
-      summary: Create trade offer
+      summary: Create trade offer 1
       description: >
         Create a trade offer on a post that is **approved** and **accepts trades** (`is_trade=true`).
         You **cannot** submit an offer to your own post.

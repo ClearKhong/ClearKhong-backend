@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS trades (
   id SERIAL PRIMARY KEY,
   post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
   proposer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT,
   description TEXT,
   image_url TEXT,
   status TEXT NOT NULL DEFAULT 'pending',

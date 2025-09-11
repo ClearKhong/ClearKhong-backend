@@ -11,6 +11,36 @@ if (!fs.existsSync(tradeDir))
 const storage=multer.diskStorage({destination:(r,f,cb)=>cb(null,tradeDir),filename:(r,f,cb)=>cb(null,Date.now()+'-'+Math.round(Math.random()*1e9)+path.extname(f.originalname))});
 const upload=multer({storage});
 
+// แสดงข้อเสนอเทรดทั้งหมด
+router.get('/my-trades',requireAuth ,async (req, res) => {
+  const tradesRes = await query(
+    'SELECT id, title, description, image_url, status FROM trades WHERE proposer_id=$1 AND status=$2 ORDER BY id DESC',
+    [req.user.id, 'pending']
+  );
+
+  if (tradesRes.rows.length === 0) {
+    return res.json({ trades: [] });
+  }  
+
+  const trades = tradesRes.rows.map(t => {
+    let images = [];
+    try {
+      images = JSON.parse(t.image_url || '[]');
+    } catch (e) {
+      images = [];
+    }
+    return {
+      id: t.id,
+      title: t.title,
+      description: t.description,
+      images,
+      status: t.status
+    };
+  });
+
+  res.json({ trades });
+});
+
 // ดึงข้อเสนอการเทรดทั้งหมดของโพสต์
 router.get('/:postId', requireAuth, async (req,res)=>{
   const pid=Number(req.params.postId);
