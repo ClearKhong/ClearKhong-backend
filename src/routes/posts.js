@@ -22,7 +22,7 @@ router.get('/', async (req, res) => {
   if (tag) {
     ps.push(tag);
     sql += ` AND $${ps.length} = ANY(p.tags)`;
-  } sql += ' ORDER BY (p.promoted_at IS NOT NULL) DESC, p.promoted_at DESC NULLS LAST, p.created_at DESC LIMIT 100';
+  } sql += ' ORDER BY (p.promoted_at IS NOT NULL) DESC, p.promoted_at DESC NULLS LAST, p.created_at DESC';
   const r=await query(sql,ps); res.json(r.rows); });
 
 // ดึงรายละเอียดโพสต์ตาม id
