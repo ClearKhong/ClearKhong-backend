@@ -2,7 +2,6 @@ openapi: 3.0.3
 info:
   title: ClearKhong API
   version: "1.3.0"
-  description: "All endpoints per screenshots with readable examples and big-section tags."
 servers:
   - url: http://127.0.0.1:4000
 tags:
@@ -83,9 +82,9 @@ components:
           format: email
       example:
         username: diana
-        password: P@ssw0rd!
-        phone: 0912345678
-        email: diana@example.com
+        password: diana
+        phone: "0912345678"
+        email: diana@gmail.com
     AuthLogin:
       type: object
       required:
@@ -99,7 +98,7 @@ components:
           format: password
       example:
         username: diana
-        password: P@ssw0rd!
+        password: diana
     ProfileUpdate:
       type: object
       properties:
@@ -118,7 +117,7 @@ components:
           format: binary
       example:
         phone: 0912345678
-        email: diana@example.com
+        email: diana@gmail.com
         address: 99/1 ถนนสุขุมวิท กรุงเทพฯ 10110
         bio: รับซื้อ-ขาย จ.-ศ. 10:00-18:00
     PostCreate:
@@ -496,7 +495,6 @@ paths:
         - Posts
       summary: Delete my post
       description: "Delete a post by ID. The owner can delete the post even if it's pending/approved/published. Deletion removes the post from the database; related rows with FK ON DELETE CASCADE will be removed automatically."
-
       parameters:
         - in: path
           name: id
@@ -629,6 +627,9 @@ paths:
       tags:
         - Trades
       summary: Create trade offer
+      description: >
+        Create a trade offer on a post that is **approved** and **accepts trades** (`is_trade=true`).
+        You **cannot** submit an offer to your own post.
       parameters:
         - in: path
           name: postId
@@ -643,12 +644,50 @@ paths:
               $ref: "#/components/schemas/TradeCreate"
       responses:
         "200":
-          description: OK
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  id:
+                    type: integer
+                    example: 42
+        "400":
+          description: >
+            Bad request (post not ready for trading / post does not accept trades / cannot offer trade on your own post)
+          content:
+            application/json:
+              examples:
+                notReady:
+                  summary: post not approved
+                  value:
+                    error: The post is not ready for trading yet.
+                noTrade:
+                  summary: post does not accept trades
+                  value:
+                    error: this post does not accept trades
+                selfOffer:
+                  summary: cannot trade on own post
+                  value:
+                    error: cannot offer trade on your own post
+        "404":
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/trades/{postId}/accept/{offerId}:
     post:
       tags:
         - Trades
       summary: Accept trade offer
+      description: >
+        Accept a pending trade offer on your own post. The post must still be **approved** and **is_trade=true**.
+        Only the post owner can accept. Offer must be **pending**.
       parameters:
         - in: path
           name: postId
@@ -663,6 +702,40 @@ paths:
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+        "400":
+          description: >
+            Bad request (post is not tradable / offer not pending)
+          content:
+            application/json:
+              examples:
+                notTradable:
+                  summary: post not tradable
+                  value:
+                    error: post is not tradable
+                notPending:
+                  summary: offer not pending
+                  value:
+                    error: offer not pending
+        "403":
+          description: Forbidden (not post owner)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found (post or offer)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/reports:
     post:
       tags:
