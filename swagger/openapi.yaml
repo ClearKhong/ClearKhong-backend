@@ -25,6 +25,8 @@ tags:
     description: Top-up / token operations
   - name: Reviews
     description: Seller reviews and ratings
+  - name: Favorites
+    description: Toggle favorite posts (add/remove)
 security:
   - bearerAuth: []
     cookieAuth: []
@@ -347,6 +349,45 @@ components:
           nullable: true
           description: optional purchase reference
           example: 345
+    FavoriteToggle:
+      type: object
+      required: [post_id]
+      properties:
+        post_id:
+          type: integer
+        # user_id:
+        #   type: integer
+      example:
+        # user_id: 1
+        post_id: 101
+    
+    FavoriteItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        post_id:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        post:
+          $ref: '#/components/schemas/Post'
+      example:
+        id: 1
+        user_id: 2
+        post_id: 10
+        created_at: "2025-09-18T10:20:30Z"
+        post:
+          id: 10
+          title: "iPhone 13 128GB"
+          description: "สภาพ 95% มีรอยขนแมวเล็กน้อย"
+          price: 14500
+          is_sell: true
+          is_trade: false
+
 paths:
   /api/auth/register:
     post:
@@ -1178,3 +1219,75 @@ paths:
       responses:
         "200":
           description: OK
+  /api/favorite/togglefavorite:
+    post:
+      tags: [Favorites]
+      summary: Toggle favorite for a post
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      description: |
+        - ถ้ายังไม่ได้กด favorite → จะเพิ่มเข้าไป  
+        - ถ้าเคยกด favorite แล้ว → จะลบออก
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FavoriteToggle'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  action:
+                    type: string
+                    enum: [added, removed]
+              example:
+                ok: true
+                action: added
+        '400':
+          description: Bad request (post_id missing)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                example:
+                  error: post_id is required
+                  
+  /api/favorite/myfavoite:
+    get:
+      tags: [Favorites]
+      summary: Get my favorite posts
+      description: ดึงรายการโพสต์ที่ผู้ใช้ login กด favorite ไว้
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FavoriteItem'
+              example:
+                - id: 1
+                  user_id: 2
+                  post_id: 10
+                  created_at: "2025-09-18T10:20:30Z"
+                  post:
+                    id: 10
+                    title: "iPhone 13 128GB"
+                    description: "สภาพ 95% มีรอยขนแมวเล็กน้อย"
+                    price: 14500
+                    is_sell: true
+                    is_trade: false
+        '401':
+          description: Unauthorized (ต้อง login ก่อน)
