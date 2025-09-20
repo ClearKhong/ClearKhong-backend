@@ -16,6 +16,7 @@ import notifsRouter from './src/routes/notifs.js';
 import reportsRouter from './src/routes/reports.js';
 import reviewsRouter from './src/routes/reviews.js';
 import FavoriteRouter from './src/routes/favorite.js';
+import orderRouter from './src/routes/orders.js';
 import swaggerUi from 'swagger-ui-express';
 import YAML from 'yamljs';
 dotenv.config();
@@ -49,6 +50,7 @@ app.use('/api/notifs', notifsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/reviews', reviewsRouter);
 app.use('/api/favorite', FavoriteRouter);
+app.use('/api/orders', orderRouter);
 
 app.get('/', (req, res) => {
   res.send('✅ ClearKhong backend is running. See /docs for API.');
