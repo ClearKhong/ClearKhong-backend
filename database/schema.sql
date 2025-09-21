@@ -198,3 +198,39 @@ DO $$ BEGIN
   END IF;
 END
 $$ LANGUAGE plpgsql;
+
+-- 11. FAVORITES
+CREATE TABLE IF NOT EXISTS favorites (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, post_id)
+);
+
+-- 12. ORDERS
+CREATE TABLE IF NOT EXISTS orders (
+  id SERIAL PRIMARY KEY,
+  post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  buyer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  seller_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status VARCHAR(20) NOT NULL DEFAULT 'waiting_confirm',
+  tracking_number TEXT,
+  rating INTEGER CHECK (rating BETWEEN 1 AND 5),
+  review TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX uniq_orders_post_buyer ON orders(post_id, buyer_id);
+
+-- CHECK constraint สำหรับ state
+ALTER TABLE orders ADD CONSTRAINT chk_order_status
+CHECK (status IN (
+  'waiting_confirm',   -- buyer ซื้อ → seller ต้องตรวจสอบเงิน
+  'payment_confirmed', -- seller กดยืนยันว่าได้เงินแล้ว
+  'shipping',          -- seller ใส่เลขพัสดุแล้ว กำลังจัดส่ง
+  'delivered',         -- buyer กดยืนยันว่าได้รับของแล้ว
+  'review',            -- รอให้คะแนน
+  'completed'  -- จบกระบวนการ (หลังจากให้คะแนนแล้ว)
+));
