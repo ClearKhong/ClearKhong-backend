@@ -32,7 +32,7 @@ router.get('/:id', async (req,res)=>{ const r=await query(`SELECT p.*, u.id AS a
 });
 
 // สร้างโพสต์ใหม่ (อัปโหลดรูปได้ ต้องล็อกอิน)
-router.post('/', requireAuth, upload.array('images', 8), async (req,res)=>{
+router.post('/', requireAuth, upload.array('images', 10), async (req,res)=>{
   const { title, description } = req.body;
   const isSell = ['true', 'on', '1', 'yes'].includes(String(req.body.is_sell).toLowerCase());
   const isTrade = ['true', 'on', '1', 'yes'].includes(String(req.body.is_trade).toLowerCase());
@@ -43,7 +43,13 @@ router.post('/', requireAuth, upload.array('images', 8), async (req,res)=>{
     tags = raw.flatMap(v => String(v).split(',')).map(s => s.trim()).filter(Boolean);
   else if (typeof raw === 'string')
     tags = raw.split(',').map(s => s.trim()).filter(Boolean);
-  const images = (req.files && req.files.length) ? req.files.map(f=>('/uploads/posts/'+f.filename)) : [DEFAULT_IMG];
+  // enforce 4-10 uploaded images
+  const uploaded = req.files || [];
+  if (!uploaded.length)
+    return res.status(400).json({ error: 'You must upload between 4 and 10 images' });
+  if (uploaded.length < 4 || uploaded.length > 10)
+    return res.status(400).json({ error: 'Images must be between 4 and 10 files' });
+  const images = uploaded.map(f => ('/uploads/posts/'+f.filename));
   const image = JSON.stringify(images)
   if (!title || !description || (!isSell && !isTrade))
     return res.status(400).json({ error: 'Incomplete information' });
@@ -98,7 +104,7 @@ router.post('/:id/promote', requireAuth, async (req,res)=>{
 export default router;
 
 // แก้ไขโพสต์ (อัปโหลดรูปใหม่ได้ ต้องล็อกอิน)
-router.put('/:id', requireAuth, upload.array('images', 8), async (req,res)=>{
+router.put('/:id', requireAuth, upload.array('images', 10), async (req,res)=>{
   const id = Number(req.params.id);
   const owner = await query(`SELECT user_id, status FROM posts WHERE id=$1`, [id]);
   if (!owner.rowCount)
@@ -123,6 +129,12 @@ router.put('/:id', requireAuth, upload.array('images', 8), async (req,res)=>{
                               : (typeof raw === 'string' ? raw.split(',').map(s=>s.trim()).filter(Boolean) : []);
   }
   const images = (req.files && req.files.length) ? req.files.map(f=>('/uploads/posts/'+f.filename)) : null;
+  // if new images uploaded, enforce 4-10 rule
+  if (req.files && req.files.length) {
+    const cnt = req.files.length;
+    if (cnt < 4 || cnt > 10)
+      return res.status(400).json({ error: 'When replacing images, upload between 4 and 10 files' });
+  }
 
   const sets = []; const ps = [id];
   function push(col, val){ ps.push(val); sets.push(col+'=$'+ps.length); }
