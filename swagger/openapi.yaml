@@ -129,6 +129,7 @@ components:
       required:
         - title
         - description
+        - images
       properties:
         title:
           type: string
@@ -151,6 +152,8 @@ components:
                 type: string
         images:
           type: array
+          minItems: 4
+          maxItems: 10
           items:
             type: string
             format: binary
@@ -185,6 +188,8 @@ components:
                 type: string
         images:
           type: array
+          minItems: 4
+          maxItems: 10
           items:
             type: string
             format: binary
@@ -362,7 +367,7 @@ components:
       example:
         # user_id: 1
         post_id: 101
-    
+
     FavoriteItem:
       type: object
       properties:
@@ -376,7 +381,7 @@ components:
           type: string
           format: date-time
         post:
-          $ref: '#/components/schemas/Post'
+          $ref: "#/components/schemas/Post"
       example:
         id: 1
         user_id: 2
@@ -389,7 +394,7 @@ components:
           price: 14500
           is_sell: true
           is_trade: false
-    
+
     OrderCreate:
       type: object
       required: [post_id]
@@ -427,7 +432,7 @@ components:
           type: string
       example:
         tracking_number: "TH1234567890"
-    
+
     OrderReview:
       type: object
       required: [rating]
@@ -545,6 +550,7 @@ paths:
       tags:
         - Posts
       summary: Create a post
+      description: Images are required and must be between 4 and 10 files.
       requestBody:
         required: true
         content:
@@ -579,6 +585,7 @@ paths:
           required: true
           schema:
             type: integer
+      description: Edit a post. If you upload a new set of images to replace existing ones, the upload must contain between 4 and 10 images. Leaving images out will keep the existing images unchanged.
       requestBody:
         required: false
         content:
@@ -711,7 +718,7 @@ paths:
     get:
       tags:
         - Trades
-      summary: List my pending trades 
+      summary: List my pending trades
       responses:
         "200":
           description: OK
@@ -849,61 +856,61 @@ paths:
                 $ref: "#/components/schemas/Error"
   /api/trades/{tradeId}:
     delete:
-        tags:
-          - Trades
-        summary: Delete a trade completely
-        description: Delete a trade and all its associated post relations. Only the proposer can delete their trade.
-        parameters:
-          - in: path
-            name: tradeId
-            required: true
-            schema:
-              type: integer
-            description: ID of the trade to delete
-        responses:
-          '200':
-            description: Trade deleted successfully
-            content:
-              application/json:
-                schema:
-                  type: object
-                  properties:
-                    ok:
-                      type: boolean
-                      example: true
-                    message:
-                      type: string
-                      example: Trade deleted successfully
-          '400':
-            description: Invalid request
-            content:
-              application/json:
-                schema:
-                  type: object
-                  properties:
-                    error:
-                      type: string
-                      example: Invalid trade ID
-          '403':
-            description: Forbidden
-            content:
-              application/json:
-                schema:
-                  type: object
-                  properties:
-                    error:
-                      type: string
-                      example: You cannot delete this trade
-          '404':
-            description: Trade not found
-            content:
-              application/json:
-                schema:
-                  type: object
-                  properties:
-                    error:
-                      type: string
-                      example: Trade not found
+      tags:
+        - Trades
+      summary: Delete a trade completely
+      description: Delete a trade and all its associated post relations. Only the proposer can delete their trade.
+      parameters:
+        - in: path
+          name: tradeId
+          required: true
+          schema:
+            type: integer
+          description: ID of the trade to delete
+      responses:
+        "200":
+          description: Trade deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Trade deleted successfully
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Invalid trade ID
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: You cannot delete this trade
+        "404":
+          description: Trade not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Trade not found
   /api/trades/{postId}/accept/{offerId}:
     post:
       tags:
@@ -965,7 +972,8 @@ paths:
       tags:
         - Reports
       summary: Create a report
-      description: Create a report on a target user. The reporter must be authenticated.
+      description:
+        Create a report on a target user. The reporter must be authenticated.
         The reporter **cannot report themselves**.
       requestBody:
         required: true
@@ -1289,9 +1297,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/FavoriteToggle'
+              $ref: "#/components/schemas/FavoriteToggle"
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
@@ -1306,7 +1314,7 @@ paths:
               example:
                 ok: true
                 action: added
-        '400':
+        "400":
           description: Bad request (post_id missing)
           content:
             application/json:
@@ -1317,21 +1325,21 @@ paths:
                     type: string
                 example:
                   error: post_id is required
-                  
+
   /api/favorite/myfavoite:
     get:
       tags: [Favorites]
       summary: Get my favorite posts
       description: ดึงรายการโพสต์ที่ผู้ใช้ login กด favorite ไว้
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/FavoriteItem'
+                  $ref: "#/components/schemas/FavoriteItem"
               example:
                 - id: 1
                   user_id: 2
@@ -1344,9 +1352,9 @@ paths:
                     price: 14500
                     is_sell: true
                     is_trade: false
-        '401':
+        "401":
           description: Unauthorized (ต้อง login ก่อน)
-  
+
   /api/orders:
     post:
       tags: [Orders]
@@ -1356,9 +1364,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/OrderCreate'
+              $ref: "#/components/schemas/OrderCreate"
       responses:
-        '200':
+        "200":
           description: Order created
           content:
             application/json:
@@ -1366,21 +1374,21 @@ paths:
                 type: object
                 properties:
                   ok: { type: boolean }
-                  order: { $ref: '#/components/schemas/Order' }
+                  order: { $ref: "#/components/schemas/Order" }
 
-  /api/orders/my:                
+  /api/orders/my:
     get:
       tags: [Orders]
       summary: Get my orders (as buyer or seller)
       responses:
-        '200':
+        "200":
           description: My orders list
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Order'
+                  $ref: "#/components/schemas/Order"
 
   /api/orders/{id}:
     get:
@@ -1392,12 +1400,12 @@ paths:
           required: true
           schema: { type: integer }
       responses:
-        '200':
+        "200":
           description: Order detail
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Order'
+                $ref: "#/components/schemas/Order"
 
   /api/orders/{id}/confirm-payment:
     post:
@@ -1409,7 +1417,7 @@ paths:
           required: true
           schema: { type: integer }
       responses:
-        '200':
+        "200":
           description: Payment confirmed
           content:
             application/json:
@@ -1417,7 +1425,7 @@ paths:
                 type: object
                 properties:
                   ok: { type: boolean }
-                  order: { $ref: '#/components/schemas/Order' }
+                  order: { $ref: "#/components/schemas/Order" }
 
   /api/orders/{id}/add-tracking:
     post:
@@ -1433,9 +1441,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TrackingNumber'
+              $ref: "#/components/schemas/TrackingNumber"
       responses:
-        '200':
+        "200":
           description: Tracking added → status = shipping
           content:
             application/json:
@@ -1443,7 +1451,7 @@ paths:
                 type: object
                 properties:
                   ok: { type: boolean }
-                  order: { $ref: '#/components/schemas/Order' }
+                  order: { $ref: "#/components/schemas/Order" }
 
   /api/orders/{id}/confirm-delivery:
     post:
@@ -1455,7 +1463,7 @@ paths:
           required: true
           schema: { type: integer }
       responses:
-        '200':
+        "200":
           description: Order delivered
           content:
             application/json:
@@ -1463,7 +1471,7 @@ paths:
                 type: object
                 properties:
                   ok: { type: boolean }
-                  order: { $ref: '#/components/schemas/Order' }
+                  order: { $ref: "#/components/schemas/Order" }
 
   /api/orders/{id}/review:
     post:
@@ -1483,9 +1491,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/OrderReview'
+              $ref: "#/components/schemas/OrderReview"
       responses:
-        '200':
+        "200":
           description: Review submitted
           content:
             application/json:
@@ -1499,7 +1507,7 @@ paths:
                 example:
                   ok: true
                   message: Review submitted successfully
-        '400':
+        "400":
           description: Order not found or invalid state
           content:
             application/json:
@@ -1510,5 +1518,5 @@ paths:
                     type: string
                 example:
                   error: Order not found or invalid state
-        '500':
+        "500":
           description: Server error
