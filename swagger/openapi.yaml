@@ -973,8 +973,7 @@ paths:
         - Reports
       summary: Create a report
       description:
-        Create a report on a target user. The reporter must be authenticated.
-        The reporter **cannot report themselves**.
+        "Create a report on a target user. The reporter must be authenticated. The reporter **cannot report themselves**."
       requestBody:
         required: true
         content:
