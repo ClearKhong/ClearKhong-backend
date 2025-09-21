@@ -150,6 +150,12 @@ components:
             - type: array
               items:
                 type: string
+        special_tags:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
         images:
           type: array
           minItems: 4
@@ -181,6 +187,12 @@ components:
           nullable: true
           minimum: 0
         tags:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        special_tags:
           oneOf:
             - type: string
             - type: array
@@ -310,6 +322,10 @@ components:
         is_trade:
           type: boolean
         tags:
+          type: array
+          items:
+            type: string
+        special_tags:
           type: array
           items:
             type: string
@@ -972,8 +988,7 @@ paths:
       tags:
         - Reports
       summary: Create a report
-      description:
-        "Create a report on a target user. The reporter must be authenticated. The reporter **cannot report themselves**."
+      description: "Create a report on a target user. The reporter must be authenticated. The reporter **cannot report themselves**."
       requestBody:
         required: true
         content:

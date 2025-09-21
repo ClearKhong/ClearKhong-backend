@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS posts (
   is_sell BOOLEAN NOT NULL DEFAULT FALSE,
   is_trade BOOLEAN NOT NULL DEFAULT FALSE,
   tags TEXT[] NOT NULL DEFAULT '{}',
+  special_tags TEXT[] NOT NULL DEFAULT '{}',
   image_url TEXT,
   status post_status NOT NULL DEFAULT 'pending',
   promoted BOOLEAN NOT NULL DEFAULT FALSE,
