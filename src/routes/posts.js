@@ -10,6 +10,22 @@ if(!fs.existsSync(postDir))
   fs.mkdirSync(postDir,{recursive:true});
 const storage=multer.diskStorage({destination:(r,f,cb)=>cb(null,postDir),filename:(r,f,cb)=>cb(null,Date.now()+'-'+Math.round(Math.random()*1e9)+path.extname(f.originalname))});
 const upload=multer({storage});
+
+// Helper to call upload.array and convert multer errors to HTTP 400 with friendly messages
+function multerArray(field, max) {
+  return (req, res, next) => {
+    upload.array(field, max)(req, res, function (err) {
+      if (err) {
+        // Multer throws MulterError for file count/field issues
+        if (err && (err.code === 'LIMIT_UNEXPECTED_FILE' || err.code === 'LIMIT_FILE_COUNT' || err.message && err.message.indexOf('Unexpected field') !== -1)) {
+          return res.status(400).json({ error: 'Images must be between 4 and 10 files' });
+        }
+        return next(err);
+      }
+      next();
+    });
+  };
+}
 const DEFAULT_IMG='https://www.apple.com/v/iphone/home/cc/images/overview/consider_modals/environment/modal_trade_in_variant__ejij0q8th06e_large.jpg';
 
 // ดึงโพสต์ทั้งหมด (ค้นหา/กรองได้)
@@ -32,7 +48,7 @@ router.get('/:id', async (req,res)=>{ const r=await query(`SELECT p.*, u.id AS a
 });
 
 // สร้างโพสต์ใหม่ (อัปโหลดรูปได้ ต้องล็อกอิน)
-router.post('/', requireAuth, upload.array('images', 10), async (req,res)=>{
+router.post('/', requireAuth, multerArray('images', 10), async (req,res)=>{
   const { title, description } = req.body;
   const isSell = ['true', 'on', '1', 'yes'].includes(String(req.body.is_sell).toLowerCase());
   const isTrade = ['true', 'on', '1', 'yes'].includes(String(req.body.is_trade).toLowerCase());
@@ -104,7 +120,7 @@ router.post('/:id/promote', requireAuth, async (req,res)=>{
 export default router;
 
 // แก้ไขโพสต์ (อัปโหลดรูปใหม่ได้ ต้องล็อกอิน)
-router.put('/:id', requireAuth, upload.array('images', 10), async (req,res)=>{
+router.put('/:id', requireAuth, multerArray('images', 10), async (req,res)=>{
   const id = Number(req.params.id);
   const owner = await query(`SELECT user_id, status FROM posts WHERE id=$1`, [id]);
   if (!owner.rowCount)
