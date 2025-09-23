@@ -29,6 +29,8 @@ tags:
     description: Toggle favorite posts (add/remove)
   - name: Orders
     description: Order management for buying flow
+  - name: Trade Orders
+    description: Flow การเทรด (ยืนยันเทรด, ใส่เลขพัสดุ, ยืนยันรับของ)
 security:
   - bearerAuth: []
     cookieAuth: []
@@ -257,7 +259,8 @@ components:
             type: string
             format: binary
       example:
-        description: ขอแลกกับ AirPods Pro + เพิ่มเงิน 1,000 บาท
+        description: ขอแลกกับ AirPods Pro
+        offered_post_id: 55
     AdminUserUpdate:
       type: object
       properties:
@@ -466,6 +469,44 @@ components:
       example:
         rating: 5
         comment: "ของตรงปก ส่งไวมาก"
+
+    TradeOrder:
+      type: object
+      properties:
+        id: { type: integer }
+        trade_id: { type: integer }
+        post_id: { type: integer, nullable: true }
+        offered_trade_id: { type: integer, nullable: true }
+        sender_id: { type: integer }
+        receiver_id: { type: integer }
+        status: { type: string, enum: [waiting_shipping, shipping, completed, cancelled] }
+        tracking_number: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    TradeConfirmResponse:
+      type: object
+      properties:
+        ok: { type: boolean, example: true }
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/TradeOrder'
+
+    TradeAddTrackingRequest:
+      type: object
+      required: [tracking_number]
+      properties:
+        tracking_number:
+          type: string
+          example: TH1234567890
+
+    TradeOrderResponse:
+      type: object
+      properties:
+        ok: { type: boolean, example: true }
+        order:
+          $ref: '#/components/schemas/TradeOrder'
 
 paths:
   /api/auth/register:
@@ -1561,3 +1602,109 @@ paths:
                   error: Order not found or invalid state
         "500":
           description: Server error
+
+  /api/orders/trade/{tradeId}/confirm:
+    post:
+      summary: Proposer ยืนยันเทรด → สร้าง trade orders 2 ใบ
+      tags: [TradeOrders]
+      parameters:
+        - name: tradeId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Trade orders created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  orders:
+                    type: object
+                    properties:
+                      proposer_order:
+                        $ref: '#/components/schemas/TradeOrder'
+                      owner_order:
+                        $ref: '#/components/schemas/TradeOrder'
+
+  /api/orders/trade/{id}/trade-add-tracking:
+    post:
+      tags: [Trade Orders]
+      summary: ผู้ส่ง ใส่เลขพัสดุใบเทรดนี้ → status=shipping
+      parameters:
+        - in: path
+          name: id
+          description: id ของ trade orderน้าาา
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TradeAddTrackingRequest'
+      responses:
+        '200':
+          description: Tracking set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradeOrderResponse'
+        '400': { description: Invalid state or missing tracking }
+        '403': { description: Forbidden (not sender) }
+        '404': { description: Trade order not found }
+
+  /api/orders/trade/{id}/trade-confirm-delivery:
+    post:
+      tags: [Trade Orders]
+      summary: ผู้รับ กดยืนยันได้รับของ → status=completed
+      parameters:
+        - in: path
+          name: id
+          description: id ของ trade orderน้าาา
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Order completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradeOrderResponse'
+        '400': { description: Invalid state }
+        '403': { description: Forbidden (not receiver) }
+        '404': { description: Trade order not found }
+
+  /api/orders/trade/my:
+    get:
+      tags: [Trade Orders]
+      summary: รายการ trade orders ของฉัน (เป็น sender หรือ receiver)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TradeOrder'
+
+  /api/orders/trade/{id}:
+    get:
+      tags: [Trade Orders]
+      summary: รายละเอียด trade order
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradeOrder'
+        '404': { description: Not found }
