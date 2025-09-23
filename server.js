@@ -15,13 +15,15 @@ import commentsRouter from './src/routes/comments.js';
 import notifsRouter from './src/routes/notifs.js';
 import reportsRouter from './src/routes/reports.js';
 import reviewsRouter from './src/routes/reviews.js';
+import FavoriteRouter from './src/routes/favorite.js';
+import orderRouter from './src/routes/orders.js';
 import swaggerUi from 'swagger-ui-express';
 import YAML from 'yamljs';
 dotenv.config();
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const allowed = [process.env.ORIGIN || 'http://127.0.0.1:5500', 'http://localhost:5500'];
+const allowed = [process.env.ORIGIN || 'http://frontend:80'];
 app.use(cors({ origin: allowed, credentials: true }));
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -47,6 +49,8 @@ app.use('/api/comments', commentsRouter);
 app.use('/api/notifs', notifsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/reviews', reviewsRouter);
+app.use('/api/favorite', FavoriteRouter);
+app.use('/api/orders', orderRouter);
 
 app.get('/', (req, res) => {
   res.send('✅ ClearKhong backend is running. See /docs for API.');

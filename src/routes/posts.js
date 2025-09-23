@@ -10,7 +10,33 @@ if(!fs.existsSync(postDir))
   fs.mkdirSync(postDir,{recursive:true});
 const storage=multer.diskStorage({destination:(r,f,cb)=>cb(null,postDir),filename:(r,f,cb)=>cb(null,Date.now()+'-'+Math.round(Math.random()*1e9)+path.extname(f.originalname))});
 const upload=multer({storage});
+
+// Helper to call upload.array and convert multer errors to HTTP 400 with friendly messages
+function multerArray(field, max) {
+  return (req, res, next) => {
+    upload.array(field, max)(req, res, function (err) {
+      if (err) {
+        // Multer throws MulterError for file count/field issues
+        if (err && (err.code === 'LIMIT_UNEXPECTED_FILE' || err.code === 'LIMIT_FILE_COUNT' || err.message && err.message.indexOf('Unexpected field') !== -1)) {
+          return res.status(400).json({ error: 'Images must be between 4 and 10 files' });
+        }
+        return next(err);
+      }
+      next();
+    });
+  };
+}
 const DEFAULT_IMG='https://www.apple.com/v/iphone/home/cc/images/overview/consider_modals/environment/modal_trade_in_variant__ejij0q8th06e_large.jpg';
+
+const slipDir = path.join(process.cwd(), 'uploads', 'slips');
+if (!fs.existsSync(slipDir)) fs.mkdirSync(slipDir, { recursive: true });
+
+const slipStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, slipDir),
+  filename: (req, file, cb) => cb(null, Date.now() + '-' + Math.round(Math.random()*1e9) + path.extname(file.originalname))
+});
+
+const uploadSlip = multer({ storage: slipStorage });
 
 // ดึงโพสต์ทั้งหมด (ค้นหา/กรองได้)
 router.get('/', async (req, res) => {
@@ -32,7 +58,7 @@ router.get('/:id', async (req,res)=>{ const r=await query(`SELECT p.*, u.id AS a
 });
 
 // สร้างโพสต์ใหม่ (อัปโหลดรูปได้ ต้องล็อกอิน)
-router.post('/', requireAuth, upload.array('images', 8), async (req,res)=>{
+router.post('/', requireAuth, multerArray('images', 10), async (req,res)=>{
   const { title, description } = req.body;
   const isSell = ['true', 'on', '1', 'yes'].includes(String(req.body.is_sell).toLowerCase());
   const isTrade = ['true', 'on', '1', 'yes'].includes(String(req.body.is_trade).toLowerCase());
@@ -43,33 +69,73 @@ router.post('/', requireAuth, upload.array('images', 8), async (req,res)=>{
     tags = raw.flatMap(v => String(v).split(',')).map(s => s.trim()).filter(Boolean);
   else if (typeof raw === 'string')
     tags = raw.split(',').map(s => s.trim()).filter(Boolean);
-  const images = (req.files && req.files.length) ? req.files.map(f=>('/uploads/posts/'+f.filename)) : [DEFAULT_IMG];
+  // special_tags behaves like tags but is optional and starts empty by default
+  const rawSpecial = req.body.special_tags;
+  let special_tags = [];
+  if (Array.isArray(rawSpecial))
+    special_tags = rawSpecial.flatMap(v => String(v).split(',')).map(s => s.trim()).filter(Boolean);
+  else if (typeof rawSpecial === 'string')
+    special_tags = rawSpecial.split(',').map(s => s.trim()).filter(Boolean);
+  // enforce 4-10 uploaded images
+  const uploaded = req.files || [];
+  if (!uploaded.length)
+    return res.status(400).json({ error: 'You must upload between 4 and 10 images' });
+  if (uploaded.length < 4 || uploaded.length > 10)
+    return res.status(400).json({ error: 'Images must be between 4 and 10 files' });
+  const images = uploaded.map(f => ('/uploads/posts/'+f.filename));
   const image = JSON.stringify(images)
   if (!title || !description || (!isSell && !isTrade))
     return res.status(400).json({ error: 'Incomplete information' });
   if (isSell && (price === null || Number.isNaN(price) || price <= 0))
     return res.status(400).json({ error: 'Price must be a positive number' });
-  const r=await query(`INSERT INTO posts (user_id,title,description,price,is_sell,is_trade,tags,image_url,status,promoted) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',false) RETURNING id`,
-   [req.user.id,title,description,price,isSell,isTrade,tags,image]);
+  const r=await query(`INSERT INTO posts (user_id,title,description,price,is_sell,is_trade,tags,special_tags,image_url,status,promoted) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',false) RETURNING id`,
+   [req.user.id,title,description,price,isSell,isTrade,tags,special_tags,image]);
   res.json({ok:true,postId:r.rows[0].id}); });
 
-// ยืนยันการซื้อโพสต์ (ต้องล็อกอิน)
-router.post('/:id/confirm', requireAuth, async (req,res)=>{
-  const pid=Number(req.params.id);
-  // ห้ามซื้อของโพสต์ตัวเอง
-  const owner = await query('SELECT user_id, price FROM posts WHERE id=$1 AND status=$2', [pid, 'approved']);
-  if (!owner.rowCount)
-    return res.status(400).json({ error: 'Cannot confirm' });
-  if (owner.rows[0].user_id === req.user.id)
-    return res.status(400).json({ error: 'Cannot buy your own' });
-  await query(`UPDATE posts SET status='closed' WHERE id=$1`,[pid]);
-  const price=owner.rows[0].price||0;
-  await query(`INSERT INTO purchases (post_id,buyer_id,amount,status) VALUES ($1,$2,$3,'paid')`,[pid,req.user.id,price]);
-  // แจ้งเตือนผู้ขายและผู้ซื้อ
-  const seller=owner.rows[0].user_id;
-  await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2),($3,$4)`,[seller,'Your product has been successfully purchased.',req.user.id,'Payment complete']);
-  res.json({ok:true});
+// ซื้อสินค้า (ต้องล็อกอิน)
+router.post('/:id/buy', requireAuth, uploadSlip.single('payment_slip_url'), async (req, res) => {
+  const post_id = Number(req.params.id);
+  const buyer_id = req.user.id;
+  let { address } = req.body;
+
+  if (!post_id) return res.status(400).json({ error: 'postId is required' });
+
+  if (!req.file) return res.status(400).json({ error: 'Payment slip is required (1 file)' });
+
+  const uploadPath = '/uploads/slips/' + req.file.filename; 
+
+  // ถ้า address ไม่มี ให้ดึงจาก user
+  if (!address) {
+    const user = await query('SELECT address FROM users WHERE id=$1', [buyer_id]);
+    address = user.rowCount && user.rows[0].address ? user.rows[0].address : null;
+  }
+
+  const postRes = await query('SELECT user_id, price, status FROM posts WHERE id=$1', [post_id]);
+  if (!postRes.rowCount) return res.status(404).json({ error: 'Post not found' });
+
+  const seller_id = postRes.rows[0].user_id;
+  const amount = postRes.rows[0].price || 0;
+
+  if (seller_id === buyer_id) return res.status(400).json({ error: 'Cannot buy your own post' });
+  if (postRes.rows[0].status !== 'approved') return res.status(400).json({ error: 'Cannot buy this post' });
+
+  // ตรวจสอบ order ซ้ำ
+  const existing = await query('SELECT 1 FROM orders WHERE post_id=$1 AND buyer_id=$2', [post_id, buyer_id]);
+  if (existing.rowCount) return res.status(400).json({ error: 'Order already exists' });
+
+  const orderRes = await query(
+    `INSERT INTO orders (post_id, buyer_id, seller_id, status, address, payment_slip_url, amount)
+     VALUES ($1,$2,$3,'waiting_confirm',$4,$5,$6) RETURNING *`,
+    [post_id, buyer_id, seller_id, address, uploadPath, amount]
+  );
+
+  // แจ้งเตือนผู้ขาย
+  await query('INSERT INTO notifications (user_id, message) VALUES ($1,$2)',
+    [seller_id, 'New purchase order waiting for confirmation. Please check the payment slip.']);
+
+  res.json({ ok: true, order: orderRes.rows[0] });
 });
+
 
 // โปรโมทโพสต์ (ต้องล็อกอิน)
 router.post('/:id/promote', requireAuth, async (req,res)=>{
@@ -98,7 +164,7 @@ router.post('/:id/promote', requireAuth, async (req,res)=>{
 export default router;
 
 // แก้ไขโพสต์ (อัปโหลดรูปใหม่ได้ ต้องล็อกอิน)
-router.put('/:id', requireAuth, upload.array('images', 8), async (req,res)=>{
+router.put('/:id', requireAuth, multerArray('images', 10), async (req,res)=>{
   const id = Number(req.params.id);
   const owner = await query(`SELECT user_id, status FROM posts WHERE id=$1`, [id]);
   if (!owner.rowCount)
@@ -122,7 +188,19 @@ router.put('/:id', requireAuth, upload.array('images', 8), async (req,res)=>{
     tags = Array.isArray(raw) ? raw.flatMap(v=>String(v).split(',')).map(s=>s.trim()).filter(Boolean)
                               : (typeof raw === 'string' ? raw.split(',').map(s=>s.trim()).filter(Boolean) : []);
   }
+  const rawSpecial = req.body.special_tags;
+  let special_tags = null;
+  if (rawSpecial !== undefined) {
+    special_tags = Array.isArray(rawSpecial) ? rawSpecial.flatMap(v=>String(v).split(',')).map(s=>s.trim()).filter(Boolean)
+                                            : (typeof rawSpecial === 'string' ? rawSpecial.split(',').map(s=>s.trim()).filter(Boolean) : []);
+  }
   const images = (req.files && req.files.length) ? req.files.map(f=>('/uploads/posts/'+f.filename)) : null;
+  // if new images uploaded, enforce 4-10 rule
+  if (req.files && req.files.length) {
+    const cnt = req.files.length;
+    if (cnt < 4 || cnt > 10)
+      return res.status(400).json({ error: 'When replacing images, upload between 4 and 10 files' });
+  }
 
   const sets = []; const ps = [id];
   function push(col, val){ ps.push(val); sets.push(col+'=$'+ps.length); }
@@ -138,6 +216,8 @@ router.put('/:id', requireAuth, upload.array('images', 8), async (req,res)=>{
     push('price', price);
   if (tags !== null)
     push('tags', tags);
+  if (special_tags !== null)
+    push('special_tags', special_tags);
   if (images)
     push('image_url', JSON.stringify(images));
   //แก้เสร็จ->pending

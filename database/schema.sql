@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS posts (
   is_sell BOOLEAN NOT NULL DEFAULT FALSE,
   is_trade BOOLEAN NOT NULL DEFAULT FALSE,
   tags TEXT[] NOT NULL DEFAULT '{}',
+  special_tags TEXT[] NOT NULL DEFAULT '{}',
   image_url TEXT,
   status post_status NOT NULL DEFAULT 'pending',
   promoted BOOLEAN NOT NULL DEFAULT FALSE,
@@ -195,6 +196,60 @@ DO $$ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname='idx_seller_reviews_reviewer') THEN
     CREATE INDEX idx_seller_reviews_reviewer ON seller_reviews(reviewer_id);
+  END IF;
+END
+$$ LANGUAGE plpgsql;
+
+-- 11. FAVORITES
+CREATE TABLE IF NOT EXISTS favorites (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, post_id)
+);
+
+-- 12. ORDERS
+CREATE TABLE IF NOT EXISTS orders (
+  id SERIAL PRIMARY KEY,
+  post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  buyer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  seller_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status VARCHAR(20) NOT NULL DEFAULT 'waiting_confirm',
+  address TEXT,
+  payment_slip_url  TEXT,
+  amount NUMERIC(12,2),
+  tracking_number TEXT,
+  rating INTEGER CHECK (rating BETWEEN 1 AND 5),
+  review TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_orders_post_buyer
+ON orders(post_id, buyer_id);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    WHERE c.conname = 'chk_order_status'
+      AND t.relname = 'orders'
+      AND n.nspname = 'public'
+  ) THEN
+    ALTER TABLE public.orders
+    ADD CONSTRAINT chk_order_status
+    CHECK (status IN (
+      'waiting_confirm',
+      'payment_confirmed',
+      'shipping',
+      'delivered',
+      'review',
+      'completed'
+    ));
   END IF;
 END
 $$ LANGUAGE plpgsql;
