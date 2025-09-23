@@ -250,3 +250,35 @@ BEGIN
   END IF;
 END
 $$ LANGUAGE plpgsql;
+
+-- 13. TRADE ORDERS
+DROP TABLE IF EXISTS trade_orders CASCADE;
+
+-- สร้างตาราง trade_orders ใหม่
+CREATE TABLE trade_orders (
+  id SERIAL PRIMARY KEY,
+  trade_id    INTEGER NOT NULL REFERENCES trades(id) ON DELETE CASCADE,
+  post_id     INTEGER REFERENCES posts(id)  ON DELETE CASCADE,  -- ใช้ในฝั่ง proposer (สิ่งที่ owner โพสต์ไว้)
+  offered_trade_id INTEGER REFERENCES trades(id) ON DELETE CASCADE, -- ใช้ในฝั่ง owner (สิ่งที่ proposer เสนอมา)
+  sender_id   INTEGER NOT NULL REFERENCES users(id)  ON DELETE CASCADE, -- คนส่งของ
+  receiver_id INTEGER NOT NULL REFERENCES users(id)  ON DELETE CASCADE, -- คนรับของ
+  status VARCHAR(20) NOT NULL DEFAULT 'waiting_shipping', -- waiting_shipping | shipping | completed | cancelled
+  tracking_number TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  
+  -- ตรวจสอบว่าต้องมีอย่างน้อยหนึ่ง (post_id หรือ offered_trade_id)
+  CONSTRAINT chk_trade_orders_has_target CHECK (
+    (post_id IS NOT NULL) OR (offered_trade_id IS NOT NULL)
+  ),
+  
+  -- ตรวจสอบสถานะ
+  CONSTRAINT chk_trade_order_status CHECK (
+    status IN ('waiting_shipping','shipping','completed','cancelled')
+  )
+);
+
+-- Indexes เพื่อให้ query เร็วขึ้น
+CREATE INDEX idx_trade_orders_sender    ON trade_orders(sender_id);
+CREATE INDEX idx_trade_orders_receiver  ON trade_orders(receiver_id);
+CREATE INDEX idx_trade_orders_trade     ON trade_orders(trade_id);

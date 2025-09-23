@@ -153,28 +153,40 @@ router.delete('/:tradeId', requireAuth, async (req, res) => {
   res.json({ ok: true, message: 'Trade deleted successfully' });
 });
 
-// เจ้าของโพสต์ยอมรับข้อเสนอการเทรด
+// เจ้าของโพสต์ยอมรับข้อเสนอการเทรด (แต่ยังไม่ปิดโพสต์และไม่สร้าง order)
+// เจ้าของโพสต์ยอมรับข้อเสนอการเทรด (แต่ยังไม่ปิดโพสต์และไม่สร้าง order)
 router.post('/:postId/accept/:offerId', requireAuth, async (req,res)=>{
   const pid = Number(req.params.postId);
   const oid = Number(req.params.offerId);
+
   const post = await query('SELECT user_id, status, is_trade FROM posts WHERE id=$1', [pid]);
-  if (!post.rowCount)
-    return res.status(404).json({ error: 'not found' });
-  if (post.rows[0].user_id !== req.user.id)
-    return res.status(403).json({ error: 'forbidden' });
+  if (!post.rowCount) return res.status(404).json({ error: 'not found' });
+  if (post.rows[0].user_id !== req.user.id) return res.status(403).json({ error: 'forbidden' });
   if (post.rows[0].status !== 'approved' || !post.rows[0].is_trade)
     return res.status(400).json({ error: 'post is not tradable' });
-  const offer=await query('SELECT proposer_id, status FROM trades WHERE id=$1 AND post_id=$2',[oid,pid]);
-  if (!offer.rowCount)
-    return res.status(404).json({ error: 'offer not found' });
-  if (offer.rows[0].status !== 'pending')
-    return res.status(400).json({ error: 'offer not pending' });
-  await query('UPDATE trades SET status=$1 WHERE id=$2 AND post_id=$3',['accepted',oid,pid]);
-  await query('UPDATE posts SET status=$1 WHERE id=$2',['closed',pid]);
 
-  await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2),($3,$4)`,
-    [offer.rows[0].proposer_id,'Your trade offer has been confirmed.', req.user.id, 'You have successfully confirmed the trade.']);
-  res.json({ok:true});
+  // 👇 เปลี่ยนมาใช้ JOIN ผ่าน trade_posts
+  const offer = await query(
+    `SELECT t.proposer_id, t.status 
+     FROM trades t
+     JOIN trade_posts tp ON tp.trade_id = t.id
+     WHERE t.id = $1 AND tp.post_id = $2`,
+    [oid, pid]
+  );
+
+  if (!offer.rowCount) return res.status(404).json({ error: 'offer not found' });
+  if (offer.rows[0].status !== 'pending') return res.status(400).json({ error: 'offer not pending' });
+
+  // 👉 ตอนนี้เปลี่ยนเฉพาะ trade เป็น accepted
+  await query('UPDATE trades SET status=$1 WHERE id=$2',['accepted',oid]);
+
+  // แจ้งเตือน proposer
+  await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2)`,
+    [offer.rows[0].proposer_id,'Your trade offer has been accepted. Please confirm to proceed.']);
+
+  res.json({ok:true, message: 'Trade accepted, waiting proposer to confirm'});
 });
+
+
 
 export default router;
