@@ -10,6 +10,22 @@ if(!fs.existsSync(postDir))
   fs.mkdirSync(postDir,{recursive:true});
 const storage=multer.diskStorage({destination:(r,f,cb)=>cb(null,postDir),filename:(r,f,cb)=>cb(null,Date.now()+'-'+Math.round(Math.random()*1e9)+path.extname(f.originalname))});
 const upload=multer({storage});
+
+// Helper to call upload.array and convert multer errors to HTTP 400 with friendly messages
+function multerArray(field, max) {
+  return (req, res, next) => {
+    upload.array(field, max)(req, res, function (err) {
+      if (err) {
+        // Multer throws MulterError for file count/field issues
+        if (err && (err.code === 'LIMIT_UNEXPECTED_FILE' || err.code === 'LIMIT_FILE_COUNT' || err.message && err.message.indexOf('Unexpected field') !== -1)) {
+          return res.status(400).json({ error: 'Images must be between 4 and 10 files' });
+        }
+        return next(err);
+      }
+      next();
+    });
+  };
+}
 const DEFAULT_IMG='https://www.apple.com/v/iphone/home/cc/images/overview/consider_modals/environment/modal_trade_in_variant__ejij0q8th06e_large.jpg';
 
 const slipDir = path.join(process.cwd(), 'uploads', 'slips');
@@ -42,7 +58,7 @@ router.get('/:id', async (req,res)=>{ const r=await query(`SELECT p.*, u.id AS a
 });
 
 // สร้างโพสต์ใหม่ (อัปโหลดรูปได้ ต้องล็อกอิน)
-router.post('/', requireAuth, upload.array('images', 10), async (req,res)=>{
+router.post('/', requireAuth, multerArray('images', 10), async (req,res)=>{
   const { title, description } = req.body;
   const isSell = ['true', 'on', '1', 'yes'].includes(String(req.body.is_sell).toLowerCase());
   const isTrade = ['true', 'on', '1', 'yes'].includes(String(req.body.is_trade).toLowerCase());
@@ -53,6 +69,13 @@ router.post('/', requireAuth, upload.array('images', 10), async (req,res)=>{
     tags = raw.flatMap(v => String(v).split(',')).map(s => s.trim()).filter(Boolean);
   else if (typeof raw === 'string')
     tags = raw.split(',').map(s => s.trim()).filter(Boolean);
+  // special_tags behaves like tags but is optional and starts empty by default
+  const rawSpecial = req.body.special_tags;
+  let special_tags = [];
+  if (Array.isArray(rawSpecial))
+    special_tags = rawSpecial.flatMap(v => String(v).split(',')).map(s => s.trim()).filter(Boolean);
+  else if (typeof rawSpecial === 'string')
+    special_tags = rawSpecial.split(',').map(s => s.trim()).filter(Boolean);
   // enforce 4-10 uploaded images
   const uploaded = req.files || [];
   if (!uploaded.length)
@@ -65,8 +88,8 @@ router.post('/', requireAuth, upload.array('images', 10), async (req,res)=>{
     return res.status(400).json({ error: 'Incomplete information' });
   if (isSell && (price === null || Number.isNaN(price) || price <= 0))
     return res.status(400).json({ error: 'Price must be a positive number' });
-  const r=await query(`INSERT INTO posts (user_id,title,description,price,is_sell,is_trade,tags,image_url,status,promoted) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',false) RETURNING id`,
-   [req.user.id,title,description,price,isSell,isTrade,tags,image]);
+  const r=await query(`INSERT INTO posts (user_id,title,description,price,is_sell,is_trade,tags,special_tags,image_url,status,promoted) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',false) RETURNING id`,
+   [req.user.id,title,description,price,isSell,isTrade,tags,special_tags,image]);
   res.json({ok:true,postId:r.rows[0].id}); });
 
 // ซื้อสินค้า (ต้องล็อกอิน)
@@ -141,7 +164,7 @@ router.post('/:id/promote', requireAuth, async (req,res)=>{
 export default router;
 
 // แก้ไขโพสต์ (อัปโหลดรูปใหม่ได้ ต้องล็อกอิน)
-router.put('/:id', requireAuth, upload.array('images', 10), async (req,res)=>{
+router.put('/:id', requireAuth, multerArray('images', 10), async (req,res)=>{
   const id = Number(req.params.id);
   const owner = await query(`SELECT user_id, status FROM posts WHERE id=$1`, [id]);
   if (!owner.rowCount)
@@ -165,6 +188,12 @@ router.put('/:id', requireAuth, upload.array('images', 10), async (req,res)=>{
     tags = Array.isArray(raw) ? raw.flatMap(v=>String(v).split(',')).map(s=>s.trim()).filter(Boolean)
                               : (typeof raw === 'string' ? raw.split(',').map(s=>s.trim()).filter(Boolean) : []);
   }
+  const rawSpecial = req.body.special_tags;
+  let special_tags = null;
+  if (rawSpecial !== undefined) {
+    special_tags = Array.isArray(rawSpecial) ? rawSpecial.flatMap(v=>String(v).split(',')).map(s=>s.trim()).filter(Boolean)
+                                            : (typeof rawSpecial === 'string' ? rawSpecial.split(',').map(s=>s.trim()).filter(Boolean) : []);
+  }
   const images = (req.files && req.files.length) ? req.files.map(f=>('/uploads/posts/'+f.filename)) : null;
   // if new images uploaded, enforce 4-10 rule
   if (req.files && req.files.length) {
@@ -187,6 +216,8 @@ router.put('/:id', requireAuth, upload.array('images', 10), async (req,res)=>{
     push('price', price);
   if (tags !== null)
     push('tags', tags);
+  if (special_tags !== null)
+    push('special_tags', special_tags);
   if (images)
     push('image_url', JSON.stringify(images));
   //แก้เสร็จ->pending

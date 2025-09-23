@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS posts (
   is_sell BOOLEAN NOT NULL DEFAULT FALSE,
   is_trade BOOLEAN NOT NULL DEFAULT FALSE,
   tags TEXT[] NOT NULL DEFAULT '{}',
+  special_tags TEXT[] NOT NULL DEFAULT '{}',
   image_url TEXT,
   status post_status NOT NULL DEFAULT 'pending',
   promoted BOOLEAN NOT NULL DEFAULT FALSE,
@@ -225,15 +226,30 @@ CREATE TABLE IF NOT EXISTS orders (
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE UNIQUE INDEX uniq_orders_post_buyer ON orders(post_id, buyer_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_orders_post_buyer
+ON orders(post_id, buyer_id);
 
--- CHECK constraint สำหรับ state
-ALTER TABLE orders ADD CONSTRAINT chk_order_status
-CHECK (status IN (
-  'waiting_confirm',   -- buyer ซื้อ → seller ต้องตรวจสอบเงิน
-  'payment_confirmed', -- seller กดยืนยันว่าได้เงินแล้ว
-  'shipping',          -- seller ใส่เลขพัสดุแล้ว กำลังจัดส่ง
-  'delivered',         -- buyer กดยืนยันว่าได้รับของแล้ว
-  'review',            -- รอให้คะแนน
-  'completed'  -- จบกระบวนการ (หลังจากให้คะแนนแล้ว)
-));
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    WHERE c.conname = 'chk_order_status'
+      AND t.relname = 'orders'
+      AND n.nspname = 'public'
+  ) THEN
+    ALTER TABLE public.orders
+    ADD CONSTRAINT chk_order_status
+    CHECK (status IN (
+      'waiting_confirm',
+      'payment_confirmed',
+      'shipping',
+      'delivered',
+      'review',
+      'completed'
+    ));
+  END IF;
+END
+$$ LANGUAGE plpgsql;
