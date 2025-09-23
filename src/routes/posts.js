@@ -28,6 +28,16 @@ function multerArray(field, max) {
 }
 const DEFAULT_IMG='https://www.apple.com/v/iphone/home/cc/images/overview/consider_modals/environment/modal_trade_in_variant__ejij0q8th06e_large.jpg';
 
+const slipDir = path.join(process.cwd(), 'uploads', 'slips');
+if (!fs.existsSync(slipDir)) fs.mkdirSync(slipDir, { recursive: true });
+
+const slipStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, slipDir),
+  filename: (req, file, cb) => cb(null, Date.now() + '-' + Math.round(Math.random()*1e9) + path.extname(file.originalname))
+});
+
+const uploadSlip = multer({ storage: slipStorage });
+
 // ดึงโพสต์ทั้งหมด (ค้นหา/กรองได้)
 router.get('/', async (req, res) => {
   const { q, tag } = req.query;
@@ -82,23 +92,50 @@ router.post('/', requireAuth, multerArray('images', 10), async (req,res)=>{
    [req.user.id,title,description,price,isSell,isTrade,tags,special_tags,image]);
   res.json({ok:true,postId:r.rows[0].id}); });
 
-// ยืนยันการซื้อโพสต์ (ต้องล็อกอิน)
-router.post('/:id/confirm', requireAuth, async (req,res)=>{
-  const pid=Number(req.params.id);
-  // ห้ามซื้อของโพสต์ตัวเอง
-  const owner = await query('SELECT user_id, price FROM posts WHERE id=$1 AND status=$2', [pid, 'approved']);
-  if (!owner.rowCount)
-    return res.status(400).json({ error: 'Cannot confirm' });
-  if (owner.rows[0].user_id === req.user.id)
-    return res.status(400).json({ error: 'Cannot buy your own' });
-  await query(`UPDATE posts SET status='closed' WHERE id=$1`,[pid]);
-  const price=owner.rows[0].price||0;
-  await query(`INSERT INTO purchases (post_id,buyer_id,amount,status) VALUES ($1,$2,$3,'paid')`,[pid,req.user.id,price]);
-  // แจ้งเตือนผู้ขายและผู้ซื้อ
-  const seller=owner.rows[0].user_id;
-  await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2),($3,$4)`,[seller,'Your product has been successfully purchased.',req.user.id,'Payment complete']);
-  res.json({ok:true});
+// ซื้อสินค้า (ต้องล็อกอิน)
+router.post('/:id/buy', requireAuth, uploadSlip.single('payment_slip_url'), async (req, res) => {
+  const post_id = Number(req.params.id);
+  const buyer_id = req.user.id;
+  let { address } = req.body;
+
+  if (!post_id) return res.status(400).json({ error: 'postId is required' });
+
+  if (!req.file) return res.status(400).json({ error: 'Payment slip is required (1 file)' });
+
+  const uploadPath = '/uploads/slips/' + req.file.filename; 
+
+  // ถ้า address ไม่มี ให้ดึงจาก user
+  if (!address) {
+    const user = await query('SELECT address FROM users WHERE id=$1', [buyer_id]);
+    address = user.rowCount && user.rows[0].address ? user.rows[0].address : null;
+  }
+
+  const postRes = await query('SELECT user_id, price, status FROM posts WHERE id=$1', [post_id]);
+  if (!postRes.rowCount) return res.status(404).json({ error: 'Post not found' });
+
+  const seller_id = postRes.rows[0].user_id;
+  const amount = postRes.rows[0].price || 0;
+
+  if (seller_id === buyer_id) return res.status(400).json({ error: 'Cannot buy your own post' });
+  if (postRes.rows[0].status !== 'approved') return res.status(400).json({ error: 'Cannot buy this post' });
+
+  // ตรวจสอบ order ซ้ำ
+  const existing = await query('SELECT 1 FROM orders WHERE post_id=$1 AND buyer_id=$2', [post_id, buyer_id]);
+  if (existing.rowCount) return res.status(400).json({ error: 'Order already exists' });
+
+  const orderRes = await query(
+    `INSERT INTO orders (post_id, buyer_id, seller_id, status, address, payment_slip_url, amount)
+     VALUES ($1,$2,$3,'waiting_confirm',$4,$5,$6) RETURNING *`,
+    [post_id, buyer_id, seller_id, address, uploadPath, amount]
+  );
+
+  // แจ้งเตือนผู้ขาย
+  await query('INSERT INTO notifications (user_id, message) VALUES ($1,$2)',
+    [seller_id, 'New purchase order waiting for confirmation. Please check the payment slip.']);
+
+  res.json({ ok: true, order: orderRes.rows[0] });
 });
+
 
 // โปรโมทโพสต์ (ต้องล็อกอิน)
 router.post('/:id/promote', requireAuth, async (req,res)=>{

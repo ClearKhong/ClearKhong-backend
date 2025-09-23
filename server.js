@@ -24,7 +24,7 @@ dotenv.config();
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const allowed = [process.env.ORIGIN || 'http://127.0.0.1:5500', 'http://localhost:5500'];
+const allowed = [process.env.ORIGIN || 'http://frontend:80'];
 app.use(cors({ origin: allowed, credentials: true }));
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },

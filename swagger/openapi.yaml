@@ -413,16 +413,19 @@ components:
           price: 14500
           is_sell: true
           is_trade: false
-
     OrderCreate:
       type: object
-      required: [post_id]
       properties:
-        post_id:
-          type: integer
+        address:
+          type: string
+        payment_slip_url:
+          type: string
+          format: binary
+      required:
+        - payment_slip_url
       example:
-        post_id: 123
-
+        address: "เนเวอร์มอ"
+        payment_slip_url: "slip.jpg"
     Order:
       type: object
       properties:
@@ -678,20 +681,66 @@ paths:
           description: Forbidden (not owner)
         "404":
           description: Not found
-  /api/posts/{id}/confirm:
+  /api/posts/{id}/buy:
     post:
       tags:
         - Posts
-      summary: Confirm to pending
+      summary: Buy post (create order)
+      description: >
+        Buyer purchases a post that is **approved**. The order will be created in **waiting_confirm** status.
+        The buyer **cannot** buy their own post. If `address` is not provided, it will be fetched from the user's profile.
       parameters:
         - in: path
           name: id
           required: true
           schema:
             type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/OrderCreate"
       responses:
         "200":
-          description: OK
+          description: Order created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  order:
+                    $ref: "#/components/schemas/Order"
+        "400":
+          description: Bad request (buy own post / order already exists / post not approved)
+          content:
+            application/json:
+              examples:
+                ownPost:
+                  summary: cannot buy your own post
+                  value:
+                    error: Cannot buy your own post
+                duplicateOrder:
+                  summary: order already exists
+                  value:
+                    error: Order already exists
+                notApproved:
+                  summary: post not approved
+                  value:
+                    error: Cannot buy this post
+        "404":
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Post not found
   /api/posts/{id}/promote:
     post:
       tags:
@@ -1409,28 +1458,6 @@ paths:
                     is_trade: false
         "401":
           description: Unauthorized (ต้อง login ก่อน)
-
-  /api/orders:
-    post:
-      tags: [Orders]
-      summary: Create new order (buyer buy a post)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/OrderCreate"
-      responses:
-        "200":
-          description: Order created
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  ok: { type: boolean }
-                  order: { $ref: "#/components/schemas/Order" }
-
   /api/orders/my:
     get:
       tags: [Orders]

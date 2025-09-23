@@ -6,46 +6,7 @@ const router = Router();
 
 /**
  * ✅ Buyer กดซื้อ → สร้าง Order
- * state เริ่มต้น: waiting_payment
- */
-router.post('/', requireAuth, async (req, res) => {
-  const { post_id } = req.body;
-  const buyer_id = req.user.id;
-
-  if (!post_id) return res.status(400).json({ error: 'post_id is required' });
-
-  try {
-    // ดึง seller ของโพสต์
-    const post = await query(`SELECT user_id FROM posts WHERE id=$1`, [post_id]);
-    if (!post.rowCount) return res.status(404).json({ error: 'Post not found' });
-    const seller_id = post.rows[0].user_id;
-
-    if (seller_id === buyer_id) {
-      return res.status(400).json({ error: 'Cannot order your own post' });
-    }
-
-    // เช็คว่ามี order ซ้ำหรือยัง
-    const existing = await query(
-      `SELECT 1 FROM orders WHERE post_id=$1 AND buyer_id=$2`,
-      [post_id, buyer_id]
-    );
-    if (existing.rowCount) {
-      return res.status(400).json({ error: 'Order already exists' });
-    }
-
-    const r = await query(
-      `INSERT INTO orders (post_id, buyer_id, seller_id, status)
-       VALUES ($1, $2, $3, 'waiting_confirm')
-       RETURNING id, status`,
-      [post_id, buyer_id, seller_id]
-    );
-
-    res.json({ ok: true, order: r.rows[0] });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'server error' });
-  }
-});
+ * state เริ่มต้น: waiting_payment อยู่ในหน้าโพสต์
 
 /**
  * ✅ Seller กดยืนยันเงินเข้า
