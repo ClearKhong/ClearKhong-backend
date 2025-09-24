@@ -136,7 +136,7 @@ router.post('/trade/:id/trade-confirm-delivery', requireAuth, async (req, res) =
  * GET /api/orders/trade/my
  * ดูใบ trade orders ของเรา (เป็น sender หรือ receiver ก็ได้)
  */
-router.get('/my', requireAuth, async (req, res) => {
+router.get('/trade/my', requireAuth, async (req, res) => {
   const userId = req.user.id;
   try {
     const r = await query(
@@ -158,7 +158,7 @@ router.get('/my', requireAuth, async (req, res) => {
  * GET /api/orders/trade/:id
  * รายละเอียดใบ trade order
  */
-router.get('/:id', requireAuth, async (req, res) => {
+router.get('/trade/:id', requireAuth, async (req, res) => {
   const orderId = req.params.id;
   const userId  = req.user.id;
 
