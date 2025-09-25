@@ -207,4 +207,54 @@ router.post('/trade/:id/trade-confirm-delivery', requireAuth, async (req, res) =
   }
 });
 
+/**
+ * GET /api/orders/trade/my
+ * ดูใบ trade orders ของเรา (เป็น sender หรือ receiver ก็ได้)
+ */
+router.get('/trade/my', requireAuth, async (req, res) => {
+  const userId = req.user.id;
+  try {
+    const r = await query(
+      `SELECT o.*, p.title, p.image_url
+       FROM trade_orders o
+       JOIN posts p ON p.id = o.post_id
+       WHERE o.sender_id=$1 OR o.receiver_id=$1
+       ORDER BY o.created_at DESC`,
+      [userId]
+    );
+    res.json(r.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'server error' });
+  }
+});
+
+/**
+ * GET /api/orders/trade/:id
+ * รายละเอียดใบ trade order
+ */
+router.get('/trade/:id', requireAuth, async (req, res) => {
+  const orderId = req.params.id;
+  const userId  = req.user.id;
+
+  try {
+    const r = await query(
+      `SELECT o.*, p.title, p.image_url,
+              su.username AS sender_name, ru.username AS receiver_name
+       FROM trade_orders o
+       JOIN posts  p  ON p.id = o.post_id
+       JOIN users su ON su.id = o.sender_id
+       JOIN users ru ON ru.id = o.receiver_id
+       WHERE o.id=$1 AND (o.sender_id=$2 OR o.receiver_id=$2)`,
+      [orderId, userId]
+    );
+
+    if (!r.rowCount) return res.status(404).json({ error: 'Order not found' });
+    res.json(r.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'server error' });
+  }
+});
+
 export default router;
