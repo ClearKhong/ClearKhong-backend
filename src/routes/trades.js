@@ -137,18 +137,6 @@ router.post('/:postId/new', requireAuth, upload.any(), async (req,res)=>{
       }
     }
   }
-  const r = await query(
-    `INSERT INTO trades (proposer_id, status)
-     VALUES ($1, 'pending') RETURNING id`,
-    [req.user.id]
-  );
-
-  const tradeId = r.rows[0].id;
-  await query(
-    'INSERT INTO trade_posts (trade_id, post_id) VALUES ($1, $2)',
-    [tradeId, pid]
-  );
-
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
     if (!it.title || !it.description) {
@@ -170,40 +158,58 @@ router.post('/:postId/new', requireAuth, upload.any(), async (req,res)=>{
         error: `Each item can have at most 10 images. Item index ${i} has ${imgs.length}`,
       });
     }
+  }
+
+  const r = await query(
+    `INSERT INTO trades (proposer_id, status)
+    VALUES ($1, 'pending') RETURNING id`,
+    [req.user.id]
+  );
+
+  const tradeId = r.rows[0].id;
+
+  await query(
+    'INSERT INTO trade_posts (trade_id, post_id) VALUES ($1, $2)',
+    [tradeId, pid]
+  );
+
+
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    const imgs = filesByItem[i] || [];
     await query(
       `INSERT INTO trade_items (trade_id, title, description, tags, image_url)
-       VALUES ($1,$2,$3,$4,$5)`,
+      VALUES ($1,$2,$3,$4,$5)`,
       [tradeId, it.title, it.description, it.tags, JSON.stringify(imgs)]
     );
   }
 
-const postTagsRes = await query('SELECT special_tags FROM posts WHERE id=$1', [pid]);
-let specialTags = [];
-if (postTagsRes.rowCount && Array.isArray(postTagsRes.rows[0].special_tags)) {
-  specialTags = postTagsRes.rows[0].special_tags.map(String);
-}
-
-let hasSpecial = false;
-for (const it of items) {
-  if (!Array.isArray(it.tags)) continue;
-  if (it.tags.some(tag => specialTags.includes(String(tag)))) {
-    hasSpecial = true;
-    break;
+  const postTagsRes = await query('SELECT special_tags FROM posts WHERE id=$1', [pid]);
+  let specialTags = [];
+  if (postTagsRes.rowCount && Array.isArray(postTagsRes.rows[0].special_tags)) {
+    specialTags = postTagsRes.rows[0].special_tags.map(String);
   }
-}
 
-//  แจ้งเตือนผู้ขาย
-if (hasSpecial) {
-  await query(
-    `INSERT INTO notifications (user_id, message) VALUES ($1, $2)`,
-    [post.rows[0].user_id, 'A trade offer matching your special tags was just submitted!']
-  );
-} else {
-  await query(
-    `INSERT INTO notifications (user_id,message) VALUES ($1,$2)`,
-    [post.rows[0].user_id,'New offer for trading']
-  );
-}
+  let hasSpecial = false;
+  for (const it of items) {
+    if (!Array.isArray(it.tags)) continue;
+    if (it.tags.some(tag => specialTags.includes(String(tag)))) {
+      hasSpecial = true;
+      break;
+    }
+  }
+  //  แจ้งเตือนผู้ขาย
+  if (hasSpecial) {
+    await query(
+      `INSERT INTO notifications (user_id, message) VALUES ($1, $2)`,
+      [post.rows[0].user_id, 'A trade offer matching your special tags was just submitted!']
+    );
+  } else {
+    await query(
+      `INSERT INTO notifications (user_id,message) VALUES ($1,$2)`,
+      [post.rows[0].user_id,'New offer for trading']
+    );
+  }
 
   res.json({ok:true, id:tradeId});
 });

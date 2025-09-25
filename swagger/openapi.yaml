@@ -108,12 +108,18 @@ components:
     ProfileUpdate:
       type: object
       properties:
-        phone:
+        name:
           type: string
-          pattern: ^\d{10}$
         email:
           type: string
           format: email
+        phone:
+          type: string
+          pattern: ^\d{10}$
+        facebook:
+          type: string
+        line:
+          type: string
         address:
           type: string
         bio:
@@ -401,6 +407,11 @@ components:
     OrderCreate:
       type: object
       properties:
+        name:
+          type: string
+        phone:
+          type: string
+          pattern: ^\d{10}$
         address:
           type: string
         payment_slip_url:
@@ -409,6 +420,8 @@ components:
       required:
         - payment_slip_url
       example:
+        name: "อุนจิแมน"
+        phone: "0912345678"
         address: "เนเวอร์มอ"
         payment_slip_url: "slip.jpg"
     Order:
@@ -883,6 +896,15 @@ paths:
                     type: string
                     format: binary
                   minItems: 4
+              required:
+                - items[0].title
+                - items[0].description
+                - items[0].tags
+                - items[0].images
+                - items[1].title
+                - items[1].description
+                - items[1].tags
+                - items[1].images
       responses:
         "200":
           description: Created
