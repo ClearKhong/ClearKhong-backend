@@ -1066,6 +1066,7 @@ paths:
         - Trades
       summary: Accept trade offer
       description: >
+        Owner ยืนยันเทรด → สร้าง trade orders ที่ส่งให้ผู้โพสต์เทรด
         Accept a pending trade offer on your own post. The post must still be **approved** and **is_trade=true**.
         Only the post owner can accept. Offer must be **pending**.
       parameters:
@@ -1079,6 +1080,24 @@ paths:
           required: true
           schema:
             type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                phone:
+                  type: string
+                  pattern: ^\d{10}$
+                address:
+                  type: string
+              example:
+                name: อุนจิแมน
+                phone: "0912345678"
+                address: เนเวอร์มอ
       responses:
         "200":
           description: OK
@@ -1648,13 +1667,31 @@ paths:
 
   /api/orders/trade/{tradeId}/confirm:
     post:
-      summary: Proposer ยืนยันเทรด → สร้าง trade orders 2 ใบ
+      summary: Proposer ยืนยันเทรด → สร้าง trade orders ที่ส่งให้ผู้เสนอเทรด
       tags: [TradeOrders]
       parameters:
         - name: tradeId
           in: path
           required: true
           schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                phone:
+                  type: string
+                  pattern: ^\d{10}$
+                address:
+                  type: string
+              example:
+                name: อุนจิแมน
+                phone: "0912345678"
+                address: เนเวอร์มอ
       responses:
         '200':
           description: Trade orders created

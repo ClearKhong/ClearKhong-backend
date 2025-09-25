@@ -93,15 +93,15 @@ DO $$ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
--- 4. PURCHASES
-CREATE TABLE IF NOT EXISTS purchases (
-  id SERIAL PRIMARY KEY,
-  post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
-  buyer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  amount NUMERIC(12,2) NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending',
-  created_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
+-- -- 4. PURCHASES
+-- CREATE TABLE IF NOT EXISTS purchases (
+--   id SERIAL PRIMARY KEY,
+--   post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+--   buyer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+--   amount NUMERIC(12,2) NOT NULL,
+--   status TEXT NOT NULL DEFAULT 'pending',
+--   created_at TIMESTAMP NOT NULL DEFAULT NOW()
+-- );
 
 -- 5. TRADES
 CREATE TABLE IF NOT EXISTS trades (
@@ -278,6 +278,9 @@ CREATE TABLE trade_orders (
   sender_id   INTEGER NOT NULL REFERENCES users(id)  ON DELETE CASCADE, -- คนส่งของ
   receiver_id INTEGER NOT NULL REFERENCES users(id)  ON DELETE CASCADE, -- คนรับของ
   status VARCHAR(20) NOT NULL DEFAULT 'waiting_shipping', -- waiting_shipping | shipping | completed | cancelled
+  name TEXT,
+  phone VARCHAR(10),
+  address TEXT,
   tracking_number TEXT,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW(),

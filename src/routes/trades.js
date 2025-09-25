@@ -357,38 +357,137 @@ router.delete('/:tradeId', requireAuth, async (req, res) => {
   res.json({ ok: true, message: 'Trade deleted successfully' });
 });
 
-// เจ้าของโพสต์ยอมรับข้อเสนอการเทรด (แต่ยังไม่ปิดโพสต์และไม่สร้าง order)
-router.post('/:postId/accept/:offerId', requireAuth, async (req,res)=>{
+
+// เจ้าของโพสต์ยอมรับข้อเสนอการเทรด + สร้าง trade_orders 1 แถว 
+//A ยอมรับข้อเสนอการเทรด แต่ A ไม่มีที่อยู่จัดส่งสินค้าของ B ระบบเลยสร้าง order ของ B ไปหา A แทน
+router.post('/:postId/accept/:offerId', requireAuth, async (req, res) => {
   const pid = Number(req.params.postId);
   const oid = Number(req.params.offerId);
+  const ownerId = req.user.id; // ต้องเป็น owner ของโพสต์
 
-  const post = await query('SELECT user_id, status, is_trade FROM posts WHERE id=$1', [pid]);
-  if (!post.rowCount) return res.status(404).json({ error: 'not found' });
-  if (post.rows[0].user_id !== req.user.id) return res.status(403).json({ error: 'forbidden' });
-  if (post.rows[0].status !== 'approved' || !post.rows[0].is_trade)
-    return res.status(400).json({ error: 'post is not tradable' });
+  try {
+    const post = await query(
+      'SELECT user_id, status, is_trade FROM posts WHERE id=$1',
+      [pid]
+    );
+    if (!post.rowCount) return res.status(404).json({ error: 'not found' });
+    if (post.rows[0].user_id !== ownerId) return res.status(403).json({ error: 'forbidden' });
+    if (post.rows[0].status !== 'approved' || !post.rows[0].is_trade)
+      return res.status(400).json({ error: 'post is not tradable' });
 
-  // 👇 เปลี่ยนมาใช้ JOIN ผ่าน trade_posts
-  const offer = await query(
-    `SELECT t.proposer_id, t.status 
-     FROM trades t
-     JOIN trade_posts tp ON tp.trade_id = t.id
-     WHERE t.id = $1 AND tp.post_id = $2`,
-    [oid, pid]
-  );
+    const offer = await query(
+      `SELECT t.id AS trade_id, t.proposer_id, t.status
+         FROM trades t
+         JOIN trade_posts tp ON tp.trade_id = t.id
+        WHERE t.id = $1 AND tp.post_id = $2`,
+      [oid, pid]
+    );
+    if (!offer.rowCount) return res.status(404).json({ error: 'offer not found' });
 
-  if (!offer.rowCount) return res.status(404).json({ error: 'offer not found' });
-  if (offer.rows[0].status !== 'pending') return res.status(400).json({ error: 'offer not pending' });
+    const { trade_id, proposer_id, status } = offer.rows[0];
+    if (status !== 'pending') return res.status(400).json({ error: 'offer not pending' });
 
-  // 👉 ตอนนี้เปลี่ยนเฉพาะ trade เป็น accepted
-  await query('UPDATE trades SET status=$1 WHERE id=$2',['accepted',oid]);
+    let { name, phone, address } = req.body;
+    if (!address || !name || !phone) {
+      const u = await query('SELECT address, name, phone FROM users WHERE id=$1', [ownerId]);
+      if (u.rowCount) {
+        if (!address) address = u.rows[0].address || null;
+        if (!name)    name    = u.rows[0].name    || null;
+        if (!phone)   phone   = u.rows[0].phone   || null;
+      }
+    }
+    if (phone && !/^\d{10}$/.test(String(phone))) {
+      return res.status(400).json({ error: 'Phone must be 10 digits' });
+    }
+    if (!address) return res.status(400).json({ error: 'Shipping address is required' });
 
-  // แจ้งเตือน proposer
-  await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2)`,
-    [offer.rows[0].proposer_id,'Your trade offer has been accepted. Please confirm to proceed.']);
+    const updTrade = await query(
+      `UPDATE trades SET status='accepted_waiting_confirm'
+        WHERE id=$1 AND status='pending'
+        RETURNING id`,
+      [trade_id]
+    );
+    if (!updTrade.rowCount) {
+      return res.status(400).json({ error: 'Trade already accepted or invalid' });
+    }
+    const exists = await query(
+      `SELECT id FROM trade_orders
+        WHERE trade_id=$1 AND offered_trade_id=$1
+          AND sender_id=$2 AND receiver_id=$3`,
+      [trade_id, proposer_id, ownerId]
+    );
 
-  res.json({ok:true, message: 'Trade accepted, waiting proposer to confirm'});
+    let tradeOrderId;
+    if (exists.rowCount) {
+      const upd = await query(
+        `UPDATE trade_orders
+            SET name=$1, phone=$2, address=$3, updated_at=NOW()
+          WHERE id=$4
+          RETURNING id`,
+        [name || null, phone || null, address || null, exists.rows[0].id]
+      );
+      tradeOrderId = upd.rows[0].id;
+    } else {
+      const ins = await query(
+        `INSERT INTO trade_orders
+           (trade_id, offered_trade_id, sender_id, receiver_id, status, name, phone, address)
+         VALUES ($1, $1, $2, $3, 'waiting_shipping', $4, $5, $6)
+         RETURNING id`,
+        [trade_id, proposer_id, ownerId, name || null, phone || null, address || null]
+      );
+      tradeOrderId = ins.rows[0].id;
+    }
+    // แจ้งเตือน proposer
+    await query(
+      `INSERT INTO notifications (user_id, message, post_id, actor_id)
+       VALUES ($1,$2,$3,$4)`,
+      [
+        proposer_id,
+        'Your trade offer has been accepted. Please confirm to proceed.',
+        pid,
+        ownerId
+      ]
+    );
+    res.json({ok:true, message: 'Trade accepted, waiting proposer to confirm'});
+
+  } catch (err) {
+    console.error('accept trade error:', err);
+    return res.status(500).json({ error: 'server error' });
+  }
 });
+
+// // เจ้าของโพสต์ยอมรับข้อเสนอการเทรด (แต่ยังไม่ปิดโพสต์และไม่สร้าง order)
+// router.post('/:postId/accept/:offerId', requireAuth, async (req,res)=>{
+//   const pid = Number(req.params.postId);
+//   const oid = Number(req.params.offerId);
+
+//   const post = await query('SELECT user_id, status, is_trade FROM posts WHERE id=$1', [pid]);
+//   if (!post.rowCount) return res.status(404).json({ error: 'not found' });
+//   if (post.rows[0].user_id !== req.user.id) return res.status(403).json({ error: 'forbidden' });
+//   if (post.rows[0].status !== 'approved' || !post.rows[0].is_trade)
+//     return res.status(400).json({ error: 'post is not tradable' });
+
+//   // 👇 เปลี่ยนมาใช้ JOIN ผ่าน trade_posts
+//   const offer = await query(
+//     `SELECT t.proposer_id, t.status 
+//      FROM trades t
+//      JOIN trade_posts tp ON tp.trade_id = t.id
+//      WHERE t.id = $1 AND tp.post_id = $2`,
+//     [oid, pid]
+//   );
+
+//   if (!offer.rowCount) return res.status(404).json({ error: 'offer not found' });
+//   if (offer.rows[0].status !== 'pending') return res.status(400).json({ error: 'offer not pending' });
+
+//   // 👉 ตอนนี้เปลี่ยนเฉพาะ trade เป็น accepted
+//   await query('UPDATE trades SET status=$1 WHERE id=$2',['accepted',oid]);
+
+//   // แจ้งเตือน proposer
+//   await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2)`,
+//     [offer.rows[0].proposer_id,'Your trade offer has been accepted. Please confirm to proceed.']);
+
+//   res.json({ok:true, message: 'Trade accepted, waiting proposer to confirm'});
+// });
 
 
 
