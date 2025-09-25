@@ -129,9 +129,14 @@ router.post('/:id/buy', requireAuth, uploadSlip.single('payment_slip_url'), asyn
     [post_id, buyer_id, seller_id, address, uploadPath, amount]
   );
 
+  await query(
+    `UPDATE posts SET status='closed' WHERE id=$1`,
+    [post_id]
+  );
+  
   // แจ้งเตือนผู้ขาย
   await query('INSERT INTO notifications (user_id, message) VALUES ($1,$2)',
-    [seller_id, 'New purchase order waiting for confirmation. Please check the payment slip.']);
+    [seller_id, 'New order waiting for confirmation. Please check the payment slip.']);
 
   res.json({ ok: true, order: orderRes.rows[0] });
 });

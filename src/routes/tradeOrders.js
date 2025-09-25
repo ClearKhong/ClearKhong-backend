@@ -4,7 +4,6 @@ import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
-
 // Proposer confirm trade → create 2 orders + close post
 router.post('/trade/:tradeId/confirm', requireAuth, async (req, res) => {
   const tradeId = Number(req.params.tradeId);
@@ -57,6 +56,15 @@ router.post('/trade/:tradeId/confirm', requireAuth, async (req, res) => {
 
     await query(`UPDATE trades SET status='confirmed' WHERE id=$1`, [tradeId]);
 
+    // แจ้งเตือนทั้ง proposer และ owner
+    await query(
+      'INSERT INTO notifications (user_id, message) VALUES ($1,$2), ($3,$4)',
+      [
+        trade.proposer_id, 'Trade confirmed. Please prepare to ship your item.',
+        owner_id,          'Trade confirmed. Please prepare to ship your item.'
+      ]
+    );
+
     res.json({
       ok: true,
       message: 'Trade confirmed, trade orders created',
@@ -95,7 +103,14 @@ router.post('/trade/:id/trade-add-tracking', requireAuth, async (req, res) => {
     if (!r.rowCount) {
       return res.status(400).json({ error: 'Order not found or invalid state' });
     }
-
+    // แจ้งเตือนผู้รับ
+    const receiverRes = await query('SELECT receiver_id FROM trade_orders WHERE id=$1', [orderId]);
+    const receiverId = receiverRes.rows[0].receiver_id;
+    await query(
+      'INSERT INTO notifications (user_id, message) VALUES ($1,$2)',
+      [receiverId, `Sender has shipped the item. Tracking: ${tracking_number}`]
+    );
+    
     res.json({ ok: true, order: r.rows[0] });
   } catch (err) {
     console.error(err);
@@ -125,6 +140,14 @@ router.post('/trade/:id/trade-confirm-delivery', requireAuth, async (req, res) =
       return res.status(400).json({ error: 'Order not found or invalid state' });
     }
 
+    const senderRes = await query('SELECT sender_id FROM trade_orders WHERE id=$1', [orderId]);
+    const senderId = senderRes.rows[0].sender_id;
+
+    // แจ้งเตือนผู้ส่ง
+    await query(
+      'INSERT INTO notifications (user_id, message) VALUES ($1,$2)',
+      [senderId, 'Receiver confirmed delivery. Trade order completed.']
+    );
     res.json({ ok: true, order: r.rows[0] });
   } catch (err) {
     console.error(err);

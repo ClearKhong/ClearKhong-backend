@@ -24,6 +24,12 @@ router.post('/:id/confirm-payment', requireAuth, async (req, res) => {
       RETURNING id, status`, [orderId, userId]);
 
     if (!r.rowCount) return res.status(400).json({ error: 'Order not found or invalid state' });
+    
+    // แจ้งเตือนผู้ซื้อ
+    await query(
+      'INSERT INTO notifications (user_id, message) VALUES ($1,$2)',
+      [r.rows[0].buyer_id, 'Your payment has been confirmed. Waiting for seller to ship.']
+    );
 
     res.json({ ok: true, order: r.rows[0] });
   } catch (err) {
@@ -51,6 +57,11 @@ router.post('/:id/add-tracking', requireAuth, async (req, res) => {
 
     if (!r.rowCount) return res.status(400).json({ error: 'Order not found or invalid state' });
 
+    // แจ้งเตือนผู้ซื้อ
+    await query(
+      'INSERT INTO notifications (user_id, message) VALUES ($1,$2)',
+      [r.rows[0].buyer_id, `Your order has been shipped. Tracking number: ${tracking_number}`]
+    );
     res.json({ ok: true, order: r.rows[0] });
   } catch (err) {
     res.status(500).json({ error: 'server error' });
@@ -74,6 +85,11 @@ router.post('/:id/confirm-delivery', requireAuth, async (req, res) => {
 
     if (!r.rowCount) return res.status(400).json({ error: 'Order not found or invalid state' });
 
+    // แจ้งเตือนผู้ขาย
+    await query(
+      'INSERT INTO notifications (user_id, message) VALUES ($1,$2)',
+      [r.rows[0].seller_id, 'Buyer has confirmed delivery. Please wait for review.']
+    );
     res.json({ ok: true, order: r.rows[0] });
   } catch (err) {
     res.status(500).json({ error: 'server error' });
@@ -104,6 +120,11 @@ router.post('/:id/review', requireAuth, async (req, res) => {
       [rating, comment || null, orderId]
     );
 
+    // 3. แจ้งเตือนผู้ขาย
+    await query(
+      'INSERT INTO notifications (user_id, message) VALUES ($1,$2)',
+      [r.rows[0].seller_id, `You received a new review: ${rating} stars${comment ? ' - ' + comment : ''}`]
+    );
     res.json({ ok: true, message: 'Review submitted successfully' });
   } catch (err) {
     console.error(err);
