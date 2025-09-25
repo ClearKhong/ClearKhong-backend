@@ -17,25 +17,37 @@ router.post('/:id/confirm-payment', requireAuth, async (req, res) => {
   const userId = req.user.id;
 
   try {
-    // ต้องเป็น seller เท่านั้น
-    const r = await query(`UPDATE orders
-      SET status='payment_confirmed', updated_at=NOW()
-      WHERE id=$1 AND seller_id=$2 AND status='waiting_confirm'
-      RETURNING id, status`, [orderId, userId]);
+    // ต้องเป็น seller เท่านั้น และต้องอยู่ในสถานะ waiting_confirm
+    const r = await query(
+      `UPDATE orders
+       SET status='payment_confirmed', updated_at=NOW()
+       WHERE id=$1 AND seller_id=$2 AND status='waiting_confirm'
+       RETURNING id, status, buyer_id`,  
+      [orderId, userId]
+    );
 
-    if (!r.rowCount) return res.status(400).json({ error: 'Order not found or invalid state' });
-    
+    if (!r.rowCount) {
+      return res.status(400).json({ error: 'Order not found or invalid state' });
+    }
+
     // แจ้งเตือนผู้ซื้อ
     await query(
-      'INSERT INTO notifications (user_id, message) VALUES ($1,$2)',
-      [r.rows[0].buyer_id, 'Your payment has been confirmed. Waiting for seller to ship.']
+      `INSERT INTO notifications (user_id, message, post_id, actor_id)
+       VALUES ($1,$2,NULL,$3)`,
+      [
+        r.rows[0].buyer_id,
+        'Your payment has been confirmed. Waiting for seller to ship.',
+        userId
+      ]
     );
 
     res.json({ ok: true, order: r.rows[0] });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'server error' });
   }
 });
+
 
 /**
  * ✅ Seller ใส่เลขพัสดุ
@@ -52,15 +64,21 @@ router.post('/:id/add-tracking', requireAuth, async (req, res) => {
     const r = await query(`UPDATE orders
       SET tracking_number=$1, status='shipping', updated_at=NOW()
       WHERE id=$2 AND seller_id=$3 AND status='payment_confirmed'
-      RETURNING id, status, tracking_number`,
+      RETURNING id, status, tracking_number, buyer_id, post_id`,
       [tracking_number, orderId, userId]);
 
     if (!r.rowCount) return res.status(400).json({ error: 'Order not found or invalid state' });
 
     // แจ้งเตือนผู้ซื้อ
     await query(
-      'INSERT INTO notifications (user_id, message) VALUES ($1,$2)',
-      [r.rows[0].buyer_id, `Your order has been shipped. Tracking number: ${tracking_number}`]
+      `INSERT INTO notifications (user_id, message, post_id, actor_id)
+       VALUES ($1,$2,$3,$4)`,
+      [
+        r.rows[0].buyer_id,
+        `Your order has been shipped. Tracking number: ${tracking_number}`,
+        r.rows[0].post_id,
+        userId
+      ]
     );
     res.json({ ok: true, order: r.rows[0] });
   } catch (err) {
@@ -80,15 +98,21 @@ router.post('/:id/confirm-delivery', requireAuth, async (req, res) => {
     const r = await query(`UPDATE orders
       SET status='review', updated_at=NOW()
       WHERE id=$1 AND buyer_id=$2 AND status='shipping'
-      RETURNING id, status`,
+      RETURNING id, status, seller_id, post_id`,
       [orderId, userId]);
 
     if (!r.rowCount) return res.status(400).json({ error: 'Order not found or invalid state' });
 
     // แจ้งเตือนผู้ขาย
     await query(
-      'INSERT INTO notifications (user_id, message) VALUES ($1,$2)',
-      [r.rows[0].seller_id, 'Buyer has confirmed delivery. Please wait for review.']
+      `INSERT INTO notifications (user_id, message, post_id, actor_id)
+       VALUES ($1,$2,$3,$4)`,
+      [
+        r.rows[0].seller_id,
+        'Buyer has confirmed delivery. Please wait for review.',
+        r.rows[0].post_id,
+        userId
+      ]
     );
     res.json({ ok: true, order: r.rows[0] });
   } catch (err) {
@@ -96,38 +120,52 @@ router.post('/:id/confirm-delivery', requireAuth, async (req, res) => {
   }
 });
 
+// ✅ Buyer ให้รีวิว → เปลี่ยนเป็น completed
 router.post('/:id/review', requireAuth, async (req, res) => {
   const orderId = req.params.id;
   const { rating, comment } = req.body;
   const userId = req.user.id;
 
   try {
-    // 1. เช็คว่า order มีอยู่จริง และ status ต้องเป็น review
     const r = await query(
-      `SELECT * FROM orders WHERE id=$1 AND buyer_id=$2`,
+      `SELECT id, status, seller_id, post_id
+         FROM orders
+        WHERE id=$1 AND buyer_id=$2`,
       [orderId, userId]
     );
 
     if (!r.rowCount || r.rows[0].status !== 'review') {
-      return res.status(400).json({ error: `Order not in review state (current: ${r.rows[0].status})` });
+      const cur = r.rows[0]?.status ?? 'unknown';
+      return res.status(400).json({ error: `Order not in review state (current: ${cur})` });
     }
 
-    // 2. อัปเดตคะแนนและรีวิว
+    // ✅ validate rating 1..5 และเป็นตัวเลข
+    const score = Number(rating);
+    if (!Number.isFinite(score) || score < 1 || score > 5) {
+      return res.status(400).json({ error: 'Rating must be a number between 1 and 5' });
+    }
+
     await query(
       `UPDATE orders
-       SET rating=$1, review=$2, status='completed', updated_at=NOW()
+         SET rating=$1, review=$2, status='completed', updated_at=NOW()
        WHERE id=$3`,
-      [rating, comment || null, orderId]
+      [score, comment || null, orderId]
     );
 
-    // 3. แจ้งเตือนผู้ขาย
     await query(
-      'INSERT INTO notifications (user_id, message) VALUES ($1,$2)',
-      [r.rows[0].seller_id, `You received a new review: ${rating} stars${comment ? ' - ' + comment : ''}`]
+      `INSERT INTO notifications (user_id, message, post_id, actor_id)
+       VALUES ($1,$2,$3,$4)`,
+      [
+        r.rows[0].seller_id,
+        `You received a new review: ${score} stars${comment ? ' - ' + comment : ''}`,
+        r.rows[0].post_id,
+        userId
+      ]
     );
+
     res.json({ ok: true, message: 'Review submitted successfully' });
   } catch (err) {
-    console.error(err);
+    console.error('review error:', err);
     res.status(500).json({ error: 'server error' });
   }
 });

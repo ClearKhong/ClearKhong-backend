@@ -96,7 +96,7 @@ router.post('/', requireAuth, multerArray('images', 10), async (req,res)=>{
 router.post('/:id/buy', requireAuth, uploadSlip.single('payment_slip_url'), async (req, res) => {
   const post_id = Number(req.params.id);
   const buyer_id = req.user.id;
-  let { address } = req.body;
+  let { name, phone, address } = req.body; 
 
   if (!post_id) return res.status(400).json({ error: 'postId is required' });
 
@@ -104,12 +104,19 @@ router.post('/:id/buy', requireAuth, uploadSlip.single('payment_slip_url'), asyn
 
   const uploadPath = '/uploads/slips/' + req.file.filename; 
 
-  // ถ้า address ไม่มี ให้ดึงจาก user
-  if (!address) {
-    const user = await query('SELECT address FROM users WHERE id=$1', [buyer_id]);
-    address = user.rowCount && user.rows[0].address ? user.rows[0].address : null;
-  }
+ // ดึงข้อมูลจาก users ถ้าไม่ได้ส่งมา
+ if (!address || !name || !phone) {
+  const user = await query(
+    'SELECT address, name, phone FROM users WHERE id=$1',
+    [buyer_id]
+  );
 
+  if (user.rowCount) {
+    if (!address) address = user.rows[0].address || null;
+    if (!name) name = user.rows[0].name || null;
+    if (!phone) phone = user.rows[0].phone || null;
+  }
+}
   const postRes = await query('SELECT user_id, price, status FROM posts WHERE id=$1', [post_id]);
   if (!postRes.rowCount) return res.status(404).json({ error: 'Post not found' });
 
@@ -124,9 +131,9 @@ router.post('/:id/buy', requireAuth, uploadSlip.single('payment_slip_url'), asyn
   if (existing.rowCount) return res.status(400).json({ error: 'Order already exists' });
 
   const orderRes = await query(
-    `INSERT INTO orders (post_id, buyer_id, seller_id, status, address, payment_slip_url, amount)
-     VALUES ($1,$2,$3,'waiting_confirm',$4,$5,$6) RETURNING *`,
-    [post_id, buyer_id, seller_id, address, uploadPath, amount]
+    `INSERT INTO orders (post_id, buyer_id, seller_id, status, name, phone, address, payment_slip_url, amount)
+     VALUES ($1,$2,$3,'waiting_confirm',$4,$5,$6,$7,$8) RETURNING *`,
+    [post_id, buyer_id, seller_id, name, phone, address, uploadPath, amount]
   );
 
   await query(

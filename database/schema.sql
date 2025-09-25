@@ -22,8 +22,11 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'user',
-  phone VARCHAR(10),
+  name TEXT,
   email TEXT,
+  phone VARCHAR(10),
+  fackebook TEXT ,
+  line TEXT,
   profile_image_url TEXT,
   tokens INTEGER NOT NULL DEFAULT 100,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -90,23 +93,20 @@ DO $$ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
--- 4. PURCHASES
-CREATE TABLE IF NOT EXISTS purchases (
-  id SERIAL PRIMARY KEY,
-  post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
-  buyer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  amount NUMERIC(12,2) NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending',
-  created_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
+-- -- 4. PURCHASES
+-- CREATE TABLE IF NOT EXISTS purchases (
+--   id SERIAL PRIMARY KEY,
+--   post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+--   buyer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+--   amount NUMERIC(12,2) NOT NULL,
+--   status TEXT NOT NULL DEFAULT 'pending',
+--   created_at TIMESTAMP NOT NULL DEFAULT NOW()
+-- );
 
 -- 5. TRADES
 CREATE TABLE IF NOT EXISTS trades (
   id SERIAL PRIMARY KEY,
   proposer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  title TEXT,
-  description TEXT,
-  image_url TEXT,
   status TEXT NOT NULL DEFAULT 'pending',
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
@@ -118,7 +118,17 @@ CREATE TABLE IF NOT EXISTS trade_posts (
   PRIMARY KEY (trade_id, post_id)
 );
 
--- 7. COMMENTS
+-- 7. TRADES ITEMS (JOIN TABLE)
+CREATE TABLE trade_items (
+  id SERIAL PRIMARY KEY,
+  trade_id INT REFERENCES trades(id) ON DELETE CASCADE,
+  title TEXT,
+  description TEXT,
+  tags TEXT[] NOT NULL DEFAULT '{}',      
+  image_url TEXT
+);
+
+-- 8. COMMENTS
 CREATE TABLE IF NOT EXISTS comments (
   id SERIAL PRIMARY KEY,
   post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
@@ -138,7 +148,7 @@ DO $$ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
--- 8. NOTIFICATIONS
+-- 9. NOTIFICATIONS
 CREATE TABLE IF NOT EXISTS notifications (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -150,7 +160,7 @@ ALTER TABLE IF EXISTS public.notifications
   ADD COLUMN IF NOT EXISTS post_id  INTEGER,
   ADD COLUMN IF NOT EXISTS actor_id INTEGER;
 
--- 9. REPORTS
+-- 10. REPORTS
 CREATE TABLE IF NOT EXISTS reports (
   id SERIAL PRIMARY KEY,
   reporter_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -176,7 +186,7 @@ ALTER TABLE reports ALTER COLUMN type SET DEFAULT 'user';
 UPDATE reports SET type = 'user' WHERE type IS NULL;
 ALTER TABLE reports ALTER COLUMN type SET NOT NULL;
 
--- 10. SELLER REVIEWS
+-- 11. SELLER REVIEWS
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='seller_reviews') THEN
     CREATE TABLE seller_reviews (
@@ -200,7 +210,7 @@ DO $$ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
--- 11. FAVORITES
+-- 12. FAVORITES
 CREATE TABLE IF NOT EXISTS favorites (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -209,13 +219,15 @@ CREATE TABLE IF NOT EXISTS favorites (
   UNIQUE (user_id, post_id)
 );
 
--- 12. ORDERS
+-- 13. ORDERS
 CREATE TABLE IF NOT EXISTS orders (
   id SERIAL PRIMARY KEY,
   post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
   buyer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   seller_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   status VARCHAR(20) NOT NULL DEFAULT 'waiting_confirm',
+  name TEXT,
+  phone VARCHAR(10),
   address TEXT,
   payment_slip_url  TEXT,
   amount NUMERIC(12,2),
@@ -254,7 +266,7 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
--- 13. TRADE ORDERS
+-- 14. TRADE ORDERS
 DROP TABLE IF EXISTS trade_orders CASCADE;
 
 -- สร้างตาราง trade_orders ใหม่
@@ -266,6 +278,9 @@ CREATE TABLE trade_orders (
   sender_id   INTEGER NOT NULL REFERENCES users(id)  ON DELETE CASCADE, -- คนส่งของ
   receiver_id INTEGER NOT NULL REFERENCES users(id)  ON DELETE CASCADE, -- คนรับของ
   status VARCHAR(20) NOT NULL DEFAULT 'waiting_shipping', -- waiting_shipping | shipping | completed | cancelled
+  name TEXT,
+  phone VARCHAR(10),
+  address TEXT,
   tracking_number TEXT,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
