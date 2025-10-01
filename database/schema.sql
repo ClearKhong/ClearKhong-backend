@@ -119,7 +119,7 @@ CREATE TABLE IF NOT EXISTS trade_posts (
 );
 
 -- 7. TRADES ITEMS (JOIN TABLE)
-CREATE TABLE trade_items (
+CREATE TABLE IF NOT EXISTS trade_items (
   id SERIAL PRIMARY KEY,
   trade_id INT REFERENCES trades(id) ON DELETE CASCADE,
   title TEXT,
