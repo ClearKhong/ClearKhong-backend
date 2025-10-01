@@ -21,7 +21,7 @@ router.get('/:postId', async (req, res) => {
   res.json(r.rows);
 });
 
-// เพิ่มคอมเมนต์ใหม่ในโพสต์ (ต้องล็อกอิน)
+// เพิ่มคอมเมนต์ใหม่ในโพสต์
 router.post('/:postId', requireAuth, async (req, res) => {
   const postId = Number(req.params.postId);
   if (!Number.isInteger(postId))
@@ -62,6 +62,35 @@ router.post('/:postId', requireAuth, async (req, res) => {
   );
 
   res.status(201).json(ins.rows[0]);
+});
+
+// ลบคอมเมนต์
+router.delete('/:commentId', requireAuth, async (req, res) => {
+  const commentId = Number(req.params.commentId);
+  if (!Number.isInteger(commentId))
+    return res.status(400).json({ error: 'invalid commentId' });
+
+  const comment = await query(
+    `SELECT c.id, c.user_id, c.post_id, p.user_id as post_owner_id
+     FROM comments c
+     JOIN posts p ON p.id = c.post_id
+     WHERE c.id = $1`,
+    [commentId]
+  );
+  
+  if (!comment.rowCount)
+    return res.status(404).json({ error: 'Comment not found' });
+  
+  const isCommentOwner = comment.rows[0].user_id === req.user.id;
+  const isPostOwner = comment.rows[0].post_owner_id === req.user.id;
+  const isAdmin = req.user.role === 'admin';
+  
+  if (!isCommentOwner && !isPostOwner && !isAdmin)
+    return res.status(403).json({ error: 'You can only delete your own comments' });
+
+  await query('DELETE FROM comments WHERE id=$1', [commentId]);
+  
+  res.json({ ok: true, message: 'Comment deleted successfully' });
 });
 
 export default router;
