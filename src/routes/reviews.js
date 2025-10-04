@@ -6,14 +6,10 @@ const router = Router();
 
 function isValidRating(x) {
   const n = Number(x);
-  if (!Number.isFinite(n))
-    return false;
-  if (n < 0.1 || n > 5.0)
-    return false;
-  return Math.abs(Math.round(n * 10) / 10 - n) < 1e-9;
+  return Number.isInteger(n) && n >= 1 && n <= 5;
 }
 
-//สร้างรีวิวให้ผู้ขาย (ต้องล็อกอิน)
+//สร้างรีวิวให้ผู้ขาย (ต้องล็อกอิน และ status='review')
 router.post('/', requireAuth, async (req, res) => {
   try {
     const reviewerId = req.user.id;
@@ -22,7 +18,7 @@ router.post('/', requireAuth, async (req, res) => {
     if (!Number.isInteger(Number(sellerId)) || Number(sellerId) <= 0)
       return res.status(400).json({ error: 'sellerId must be a positive integer' });
     if (!isValidRating(rating))
-      return res.status(400).json({ error: 'rating must be 0.1 to 5.0 with one decimal place (step 0.1)' });
+      return res.status(400).json({ error: 'rating must be an integer between 1 and 5' });
     if (!comment || String(comment).trim().length === 0)
       return res.status(400).json({ error: 'comment is required' });
     if (Number(sellerId) === Number(reviewerId))
@@ -32,25 +28,54 @@ router.post('/', requireAuth, async (req, res) => {
     if (s.rows.length === 0)
       return res.status(404).json({ error: 'seller not found' });
 
-    const insertSQL = `
-      INSERT INTO seller_reviews (reviewer_id, seller_id, order_id, rating, comment)
-      VALUES ($1,$2,$3,$4,$5)
-      RETURNING id, reviewer_id AS "reviewerId", seller_id AS "sellerId",
-                order_id AS "orderId", rating, comment, created_at AS "createdAt"
-    `;
-    const ins = await query(insertSQL, [
-      reviewerId,
-      Number(sellerId),
-      orderId ? Number(orderId) : null,
-      Number(rating),
-      String(comment).trim()
-    ]);
-    return res.status(201).json(ins.rows[0]);
+    if (orderId) {
+      const o = await query('SELECT status, seller_id, post_id FROM orders WHERE id=$1', [orderId]);
+      if (o.rows.length === 0)
+        return res.status(404).json({ error: 'order not found' });
+      if (o.rows[0].status !== 'review')
+        return res.status(400).json({ error: 'This order has not been completed yet and cannot be reviewed' });
+
+      const insertSQL = `
+        INSERT INTO seller_reviews (reviewer_id, seller_id, order_id, rating, comment)
+        VALUES ($1,$2,$3,$4,$5)
+        RETURNING id, reviewer_id AS "reviewerId", seller_id AS "sellerId",
+                  order_id AS "orderId", rating, comment, created_at AS "createdAt"
+      `;
+      const ins = await query(insertSQL, [
+        reviewerId,
+        Number(sellerId),
+        Number(orderId),
+        Number(rating),
+        String(comment).trim()
+      ]);
+
+      await query(
+        `UPDATE orders
+           SET status='completed', updated_at=NOW()
+         WHERE id=$1`,
+        [orderId]
+      );
+
+      await query(
+        `INSERT INTO notifications (user_id, message, post_id, actor_id)
+         VALUES ($1,$2,$3,$4)`,
+        [
+          o.rows[0].seller_id,
+          `You received a new review: ${rating} stars${comment ? ' - ' + comment : ''}`,
+          o.rows[0].post_id,
+          reviewerId
+        ]
+      );
+
+      return res.status(201).json(ins.rows[0]);
+    }
+
+    return res.status(400).json({ error: 'orderId is required for review' });
   } catch (err) {
     if (err?.code === '23505')
       return res.status(409).json({ error: 'you have already reviewed this seller' });
     if (err?.code === '23514')
-      return res.status(400).json({ error: 'rating must be 0.1–5.0 with one decimal place (step 0.1)' });
+      return res.status(400).json({ error: 'rating must be an integer between 1 and 5' });
     console.error(err);
     return res.status(500).json({ error: 'server error' });
   }
@@ -77,7 +102,10 @@ router.get('/users/:sellerId/reviews', async (req, res) => {
       LIMIT $2 OFFSET $3
     `;
     const { rows } = await query(listSQL, [sellerId, limit, offset]);
-    const countRes = await query('SELECT COUNT(*)::int AS count FROM seller_reviews WHERE seller_id=$1', [sellerId]);
+    const countRes = await query(
+      'SELECT COUNT(*)::int AS count FROM seller_reviews WHERE seller_id=$1',
+      [sellerId]
+    );
     return res.json({ total: countRes.rows[0].count, items: rows });
   } catch (err) {
     console.error(err);
@@ -99,7 +127,7 @@ router.get('/users/:sellerId/rating_summary', async (req, res) => {
     const { rows: a } = await query(avgSQL, [sellerId]);
 
     const distSQL = `
-      SELECT rating::float AS r, COUNT(*)::int AS c
+      SELECT rating, COUNT(*)::int AS c
       FROM seller_reviews
       WHERE seller_id=$1
       GROUP BY rating
@@ -107,9 +135,10 @@ router.get('/users/:sellerId/rating_summary', async (req, res) => {
     `;
     const { rows: d } = await query(distSQL, [sellerId]);
 
-    const distribution = {};
-    for (let x = 0.1; x <= 5.0 + 1e-9; x += 0.1) distribution[x.toFixed(1)] = 0;
-    for (const row of d) distribution[Number(row.r).toFixed(1)] = row.c;
+    const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    for (const row of d) {
+      distribution[row.rating] = row.c;
+    }
 
     return res.json({
       sellerId,

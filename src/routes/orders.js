@@ -22,7 +22,7 @@ router.post('/:id/confirm-payment', requireAuth, async (req, res) => {
       `UPDATE orders
        SET status='payment_confirmed', updated_at=NOW()
        WHERE id=$1 AND seller_id=$2 AND status='waiting_confirm'
-       RETURNING id, status, buyer_id`,  
+       RETURNING id, status, buyer_id, post_id`,  
       [orderId, userId]
     );
 
@@ -33,10 +33,11 @@ router.post('/:id/confirm-payment', requireAuth, async (req, res) => {
     // แจ้งเตือนผู้ซื้อ
     await query(
       `INSERT INTO notifications (user_id, message, post_id, actor_id)
-       VALUES ($1,$2,NULL,$3)`,
+       VALUES ($1,$2,$3,$4)`,
       [
         r.rows[0].buyer_id,
         'Your payment has been confirmed. Waiting for seller to ship.',
+        r.rows[0].post_id,
         userId
       ]
     );
@@ -47,7 +48,6 @@ router.post('/:id/confirm-payment', requireAuth, async (req, res) => {
     res.status(500).json({ error: 'server error' });
   }
 });
-
 
 /**
  * ✅ Seller ใส่เลขพัสดุ
@@ -116,56 +116,6 @@ router.post('/:id/confirm-delivery', requireAuth, async (req, res) => {
     );
     res.json({ ok: true, order: r.rows[0] });
   } catch (err) {
-    res.status(500).json({ error: 'server error' });
-  }
-});
-
-// ✅ Buyer ให้รีวิว → เปลี่ยนเป็น completed
-router.post('/:id/review', requireAuth, async (req, res) => {
-  const orderId = req.params.id;
-  const { rating, comment } = req.body;
-  const userId = req.user.id;
-
-  try {
-    const r = await query(
-      `SELECT id, status, seller_id, post_id
-         FROM orders
-        WHERE id=$1 AND buyer_id=$2`,
-      [orderId, userId]
-    );
-
-    if (!r.rowCount || r.rows[0].status !== 'review') {
-      const cur = r.rows[0]?.status ?? 'unknown';
-      return res.status(400).json({ error: `Order not in review state (current: ${cur})` });
-    }
-
-    // ✅ validate rating 1..5 และเป็นตัวเลข
-    const score = Number(rating);
-    if (!Number.isFinite(score) || score < 1 || score > 5) {
-      return res.status(400).json({ error: 'Rating must be a number between 1 and 5' });
-    }
-
-    await query(
-      `UPDATE orders
-         SET rating=$1, review=$2, status='completed', updated_at=NOW()
-       WHERE id=$3`,
-      [score, comment || null, orderId]
-    );
-
-    await query(
-      `INSERT INTO notifications (user_id, message, post_id, actor_id)
-       VALUES ($1,$2,$3,$4)`,
-      [
-        r.rows[0].seller_id,
-        `You received a new review: ${score} stars${comment ? ' - ' + comment : ''}`,
-        r.rows[0].post_id,
-        userId
-      ]
-    );
-
-    res.json({ ok: true, message: 'Review submitted successfully' });
-  } catch (err) {
-    console.error('review error:', err);
     res.status(500).json({ error: 'server error' });
   }
 });

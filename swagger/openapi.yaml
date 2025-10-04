@@ -349,22 +349,24 @@ components:
         - sellerId
         - rating
         - comment
+        - orderId
       properties:
         sellerId:
           type: integer
           example: 12
         rating:
-          type: number
-          format: float
-          description: 0.1–5.0 (step 0.1)
-          example: 4.6
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: Rating score (1-5)
+          example: 5
         comment:
           type: string
           example: บริการดี ส่งไว คุณภาพตรงปก
         orderId:
           type: integer
           nullable: true
-          description: optional purchase reference
+          description: Order ID (must be in `review` state before review)
           example: 345
     FavoriteToggle:
       type: object
@@ -453,21 +455,6 @@ components:
       example:
         tracking_number: "TH1234567890"
 
-    OrderReview:
-      type: object
-      required: [rating]
-      properties:
-        rating:
-          type: integer
-          minimum: 1
-          maximum: 5
-        comment:
-          type: string
-          nullable: true
-      example:
-        rating: 5
-        comment: "ของตรงปก ส่งไวมาก"
-
     TradeOrder:
       type: object
       properties:
@@ -477,7 +464,11 @@ components:
         offered_trade_id: { type: integer, nullable: true }
         sender_id: { type: integer }
         receiver_id: { type: integer }
-        status: { type: string, enum: [waiting_shipping, shipping, completed, cancelled] }
+        status:
+          {
+            type: string,
+            enum: [waiting_shipping, shipping, completed, cancelled],
+          }
         tracking_number: { type: string, nullable: true }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
@@ -489,7 +480,7 @@ components:
         orders:
           type: array
           items:
-            $ref: '#/components/schemas/TradeOrder'
+            $ref: "#/components/schemas/TradeOrder"
 
     TradeAddTrackingRequest:
       type: object
@@ -504,7 +495,7 @@ components:
       properties:
         ok: { type: boolean, example: true }
         order:
-          $ref: '#/components/schemas/TradeOrder'
+          $ref: "#/components/schemas/TradeOrder"
 
 paths:
   /api/auth/register:
@@ -818,6 +809,63 @@ paths:
       responses:
         "200":
           description: OK
+  /api/comments/{commentId}:
+    delete:
+      tags:
+        - Comments
+      summary: Delete a comment
+      description: Delete a comment by ID. Can be deleted by comment owner, post owner, or admin.
+      parameters:
+        - in: path
+          name: commentId
+          required: true
+          schema:
+            type: integer
+          description: ID of the comment to delete
+      responses:
+        "200":
+          description: Comment deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Comment deleted successfully
+        "400":
+          description: Invalid comment ID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: invalid commentId
+        "403":
+          description: Forbidden - only comment owner, post owner, or admin can delete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "forbidden: you can only delete your own comments"
+        "404":
+          description: Comment not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: comment not found
   /api/trades/my-trades:
     get:
       tags:
@@ -1386,8 +1434,10 @@ paths:
         - Reviews
       summary: make a review
       description: >
-        Seller-level review: Give rating 0.1 to 5.0 (step 0.1) + comment.
-        Cannot review yourself. orderId is optional.
+       Seller-level review: Give rating 1-5 (integer) + comment.  
+       Cannot review yourself. 
+       Requires a valid `orderId` where the order is in `review` state.  
+       After a review is submitted, the order status will change to `completed`.
       requestBody:
         required: true
         content:
@@ -1616,55 +1666,6 @@ paths:
                 properties:
                   ok: { type: boolean }
                   order: { $ref: "#/components/schemas/Order" }
-
-  /api/orders/{id}/review:
-    post:
-      tags: [Orders]
-      summary: Review an order (buyer only)
-      description: >
-        ใช้สำหรับผู้ซื้อในการรีวิวออเดอร์หลังจากยืนยันการได้รับของแล้ว  
-        - state ต้องเป็น `pending_review`  
-        - เมื่อรีวิวเสร็จ → state จะเปลี่ยนเป็น `completed`
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/OrderReview"
-      responses:
-        "200":
-          description: Review submitted
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  ok:
-                    type: boolean
-                  message:
-                    type: string
-                example:
-                  ok: true
-                  message: Review submitted successfully
-        "400":
-          description: Order not found or invalid state
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                example:
-                  error: Order not found or invalid state
-        "500":
-          description: Server error
-
   /api/orders/trade/{tradeId}/confirm:
     post:
       summary: Proposer ยืนยันเทรด → สร้าง trade orders ที่ส่งให้ผู้เสนอเทรด
@@ -1693,7 +1694,7 @@ paths:
                 phone: "0912345678"
                 address: เนเวอร์มอ
       responses:
-        '200':
+        "200":
           description: Trade orders created
           content:
             application/json:
@@ -1705,9 +1706,9 @@ paths:
                     type: object
                     properties:
                       proposer_order:
-                        $ref: '#/components/schemas/TradeOrder'
+                        $ref: "#/components/schemas/TradeOrder"
                       owner_order:
-                        $ref: '#/components/schemas/TradeOrder'
+                        $ref: "#/components/schemas/TradeOrder"
 
   /api/orders/trade/{id}/trade-add-tracking:
     post:
@@ -1724,17 +1725,17 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TradeAddTrackingRequest'
+              $ref: "#/components/schemas/TradeAddTrackingRequest"
       responses:
-        '200':
+        "200":
           description: Tracking set
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TradeOrderResponse'
-        '400': { description: Invalid state or missing tracking }
-        '403': { description: Forbidden (not sender) }
-        '404': { description: Trade order not found }
+                $ref: "#/components/schemas/TradeOrderResponse"
+        "400": { description: Invalid state or missing tracking }
+        "403": { description: Forbidden (not sender) }
+        "404": { description: Trade order not found }
 
   /api/orders/trade/{id}/trade-confirm-delivery:
     post:
@@ -1747,29 +1748,29 @@ paths:
           required: true
           schema: { type: integer }
       responses:
-        '200':
+        "200":
           description: Order completed
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TradeOrderResponse'
-        '400': { description: Invalid state }
-        '403': { description: Forbidden (not receiver) }
-        '404': { description: Trade order not found }
+                $ref: "#/components/schemas/TradeOrderResponse"
+        "400": { description: Invalid state }
+        "403": { description: Forbidden (not receiver) }
+        "404": { description: Trade order not found }
 
   /api/orders/trade/my:
     get:
       tags: [Trade Orders]
       summary: รายการ trade orders ของฉัน (เป็น sender หรือ receiver)
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/TradeOrder'
+                  $ref: "#/components/schemas/TradeOrder"
 
   /api/orders/trade/{id}:
     get:
@@ -1781,10 +1782,10 @@ paths:
           required: true
           schema: { type: integer }
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TradeOrder'
-        '404': { description: Not found }
+                $ref: "#/components/schemas/TradeOrder"
+        "404": { description: Not found }

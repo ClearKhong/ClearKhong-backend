@@ -10,6 +10,8 @@ if (!fs.existsSync(tradeDir))
   fs.mkdirSync(tradeDir, { recursive: true });
 const storage=multer.diskStorage({destination:(r,f,cb)=>cb(null,tradeDir),filename:(r,f,cb)=>cb(null,Date.now()+'-'+Math.round(Math.random()*1e9)+path.extname(f.originalname))});
 const upload=multer({storage});
+const textOnly = multer(); 
+
 
 // แสดงข้อเสนอเทรดทั้งหมดของ user (my-trades)
 router.get('/my-trades', requireAuth, async (req, res) => {
@@ -201,14 +203,16 @@ router.post('/:postId/new', requireAuth, upload.any(), async (req,res)=>{
   //  แจ้งเตือนผู้ขาย
   if (hasSpecial) {
     await query(
-      `INSERT INTO notifications (user_id, message) VALUES ($1, $2)`,
-      [post.rows[0].user_id, 'A trade offer matching your special tags was just submitted!']
+      `INSERT INTO notifications (user_id, message, post_id, actor_id)
+      VALUES ($1, $2, $3, $4)`,
+      [post.rows[0].user_id, 'A trade offer matching your special tags was just submitted!', pid, req.user.id]
     );
   } else {
     await query(
-      `INSERT INTO notifications (user_id,message) VALUES ($1,$2)`,
-      [post.rows[0].user_id,'New offer for trading']
-    );
+      `INSERT INTO notifications (user_id, message, post_id, actor_id)
+       VALUES ($1, $2, $3, $4)`,
+      [post.rows[0].user_id, 'New offer for trading', pid, req.user.id]
+    );    
   }
 
   res.json({ok:true, id:tradeId});
@@ -272,14 +276,16 @@ router.post('/:postId/reuse/:tradeId', requireAuth, async (req, res) => {
   //  แจ้งเตือนผู้ขาย
   if (hasSpecial) {
     await query(
-      `INSERT INTO notifications (user_id, message) VALUES ($1, $2)`,
-      [post.rows[0].user_id, 'A trade offer matching your special tags was just submitted!']
+      `INSERT INTO notifications (user_id, message, post_id, actor_id)
+      VALUES ($1, $2, $3, $4)`,
+      [post.rows[0].user_id, 'A trade offer matching your special tags was just submitted!', pid, req.user.id]
     );
   } else {
     await query(
-      `INSERT INTO notifications (user_id,message) VALUES ($1,$2)`,
-      [post.rows[0].user_id,'New offer for trading']
-    );
+      `INSERT INTO notifications (user_id, message, post_id, actor_id)
+       VALUES ($1, $2, $3, $4)`,
+      [post.rows[0].user_id, 'New offer for trading', pid, req.user.id]
+    );    
   }
   res.json({ ok: true, tradeId });
 });
@@ -360,10 +366,10 @@ router.delete('/:tradeId', requireAuth, async (req, res) => {
 
 // เจ้าของโพสต์ยอมรับข้อเสนอการเทรด + สร้าง trade_orders 1 แถว 
 //A ยอมรับข้อเสนอการเทรด แต่ A ไม่มีที่อยู่จัดส่งสินค้าของ B ระบบเลยสร้าง order ของ B ไปหา A แทน
-router.post('/:postId/accept/:offerId', requireAuth, async (req, res) => {
+router.post('/:postId/accept/:offerId', requireAuth, textOnly.none(), async (req, res) => {
   const pid = Number(req.params.postId);
   const oid = Number(req.params.offerId);
-  const ownerId = req.user.id; // ต้องเป็น owner ของโพสต์
+  const ownerId = req.user.id;
 
   try {
     const post = await query(
@@ -377,9 +383,9 @@ router.post('/:postId/accept/:offerId', requireAuth, async (req, res) => {
 
     const offer = await query(
       `SELECT t.id AS trade_id, t.proposer_id, t.status
-         FROM trades t
-         JOIN trade_posts tp ON tp.trade_id = t.id
-        WHERE t.id = $1 AND tp.post_id = $2`,
+       FROM trades t
+       JOIN trade_posts tp ON tp.trade_id = t.id
+       WHERE t.id=$1 AND tp.post_id=$2`,
       [oid, pid]
     );
     if (!offer.rowCount) return res.status(404).json({ error: 'offer not found' });
@@ -388,32 +394,35 @@ router.post('/:postId/accept/:offerId', requireAuth, async (req, res) => {
     if (status !== 'pending') return res.status(400).json({ error: 'offer not pending' });
 
     let { name, phone, address } = req.body;
+    // ดึงข้อมูลจาก users ถ้าไม่ได้ส่งมา
     if (!address || !name || !phone) {
-      const u = await query('SELECT address, name, phone FROM users WHERE id=$1', [ownerId]);
-      if (u.rowCount) {
-        if (!address) address = u.rows[0].address || null;
-        if (!name)    name    = u.rows[0].name    || null;
-        if (!phone)   phone   = u.rows[0].phone   || null;
+      const user = await query(
+        'SELECT address, name, phone FROM users WHERE id=$1',
+        [ownerId]
+      );
+    
+      if (user.rowCount) {
+        if (!address) address = user.rows[0].address || null;
+        if (!name) name = user.rows[0].name || null;
+        if (!phone) phone = user.rows[0].phone || null;
       }
     }
-    if (phone && !/^\d{10}$/.test(String(phone))) {
+    if (phone && !/^\d{10}$/.test(phone)) {
       return res.status(400).json({ error: 'Phone must be 10 digits' });
     }
     if (!address) return res.status(400).json({ error: 'Shipping address is required' });
 
     const updTrade = await query(
       `UPDATE trades SET status='accepted_waiting_confirm'
-        WHERE id=$1 AND status='pending'
-        RETURNING id`,
+       WHERE id=$1 AND status='pending'
+       RETURNING id`,
       [trade_id]
     );
-    if (!updTrade.rowCount) {
-      return res.status(400).json({ error: 'Trade already accepted or invalid' });
-    }
+    if (!updTrade.rowCount) return res.status(400).json({ error: 'Trade already accepted or invalid' });
+
     const exists = await query(
       `SELECT id FROM trade_orders
-        WHERE trade_id=$1 AND offered_trade_id=$1
-          AND sender_id=$2 AND receiver_id=$3`,
+       WHERE trade_id=$1 AND sender_id=$2 AND receiver_id=$3`,
       [trade_id, proposer_id, ownerId]
     );
 
@@ -421,41 +430,34 @@ router.post('/:postId/accept/:offerId', requireAuth, async (req, res) => {
     if (exists.rowCount) {
       const upd = await query(
         `UPDATE trade_orders
-            SET name=$1, phone=$2, address=$3, updated_at=NOW()
-          WHERE id=$4
-          RETURNING id`,
-        [name || null, phone || null, address || null, exists.rows[0].id]
+         SET name=$1, phone=$2, address=$3, updated_at=NOW()
+         WHERE id=$4 RETURNING id`,
+        [name, phone, address, exists.rows[0].id]
       );
       tradeOrderId = upd.rows[0].id;
     } else {
       const ins = await query(
         `INSERT INTO trade_orders
-           (trade_id, offered_trade_id, sender_id, receiver_id, status, name, phone, address)
-         VALUES ($1, $1, $2, $3, 'waiting_shipping', $4, $5, $6)
+         (trade_id, sender_id, receiver_id, status, name, phone, address)
+         VALUES ($1,$2,$3,'waiting_shipping',$4,$5,$6)
          RETURNING id`,
-        [trade_id, proposer_id, ownerId, name || null, phone || null, address || null]
+        [trade_id, proposer_id, ownerId, name, phone, address]
       );
       tradeOrderId = ins.rows[0].id;
     }
-    // แจ้งเตือน proposer
+
     await query(
       `INSERT INTO notifications (user_id, message, post_id, actor_id)
        VALUES ($1,$2,$3,$4)`,
-      [
-        proposer_id,
-        'Your trade offer has been accepted. Please confirm to proceed.',
-        pid,
-        ownerId
-      ]
+      [proposer_id, 'Your trade offer has been accepted. Please confirm to proceed.', pid, ownerId]
     );
-    res.json({ok:true, message: 'Trade accepted, waiting proposer to confirm'});
 
+    res.json({ ok: true, message: 'Trade accepted, waiting proposer to confirm', tradeOrderId });
   } catch (err) {
     console.error('accept trade error:', err);
-    return res.status(500).json({ error: 'server error' });
+    res.status(500).json({ error: 'server error' });
   }
 });
-
 // // เจ้าของโพสต์ยอมรับข้อเสนอการเทรด (แต่ยังไม่ปิดโพสต์และไม่สร้าง order)
 // router.post('/:postId/accept/:offerId', requireAuth, async (req,res)=>{
 //   const pid = Number(req.params.postId);

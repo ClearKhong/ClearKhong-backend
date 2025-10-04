@@ -103,7 +103,7 @@ $$ LANGUAGE plpgsql;
 --   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 -- );
 
--- 5. TRADES
+-- 4. TRADES
 CREATE TABLE IF NOT EXISTS trades (
   id SERIAL PRIMARY KEY,
   proposer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -111,15 +111,15 @@ CREATE TABLE IF NOT EXISTS trades (
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- 6. TRADES POSTS (JOIN TABLE)
+-- 5. TRADES POSTS (JOIN TABLE)
 CREATE TABLE IF NOT EXISTS trade_posts (
   trade_id INTEGER NOT NULL REFERENCES trades(id) ON DELETE CASCADE,
   post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
   PRIMARY KEY (trade_id, post_id)
 );
 
--- 7. TRADES ITEMS (JOIN TABLE)
-CREATE TABLE trade_items (
+-- 6. TRADES ITEMS (JOIN TABLE)
+CREATE TABLE IF NOT EXISTS trade_items (
   id SERIAL PRIMARY KEY,
   trade_id INT REFERENCES trades(id) ON DELETE CASCADE,
   title TEXT,
@@ -128,7 +128,7 @@ CREATE TABLE trade_items (
   image_url TEXT
 );
 
--- 8. COMMENTS
+-- 7. COMMENTS
 CREATE TABLE IF NOT EXISTS comments (
   id SERIAL PRIMARY KEY,
   post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
@@ -148,7 +148,7 @@ DO $$ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
--- 9. NOTIFICATIONS
+-- 8. NOTIFICATIONS
 CREATE TABLE IF NOT EXISTS notifications (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -160,7 +160,7 @@ ALTER TABLE IF EXISTS public.notifications
   ADD COLUMN IF NOT EXISTS post_id  INTEGER,
   ADD COLUMN IF NOT EXISTS actor_id INTEGER;
 
--- 10. REPORTS
+-- 9. REPORTS
 CREATE TABLE IF NOT EXISTS reports (
   id SERIAL PRIMARY KEY,
   reporter_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -186,31 +186,8 @@ ALTER TABLE reports ALTER COLUMN type SET DEFAULT 'user';
 UPDATE reports SET type = 'user' WHERE type IS NULL;
 ALTER TABLE reports ALTER COLUMN type SET NOT NULL;
 
--- 11. SELLER REVIEWS
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='seller_reviews') THEN
-    CREATE TABLE seller_reviews (
-      id SERIAL PRIMARY KEY,
-      reviewer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      seller_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      order_id     INTEGER NULL REFERENCES purchases(id) ON DELETE SET NULL,
-      rating       NUMERIC(2,1) NOT NULL CHECK (rating >= 0.1 AND rating <= 5.0),
-      comment      TEXT NOT NULL DEFAULT '',
-      created_at   TIMESTAMP NOT NULL DEFAULT NOW(),
-      CONSTRAINT chk_no_self_review CHECK (reviewer_id <> seller_id),
-      CONSTRAINT uniq_reviewer_seller UNIQUE (reviewer_id, seller_id)
-    );
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname='idx_seller_reviews_seller') THEN
-    CREATE INDEX idx_seller_reviews_seller ON seller_reviews(seller_id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname='idx_seller_reviews_reviewer') THEN
-    CREATE INDEX idx_seller_reviews_reviewer ON seller_reviews(reviewer_id);
-  END IF;
-END
-$$ LANGUAGE plpgsql;
 
--- 12. FAVORITES
+-- 10. FAVORITES
 CREATE TABLE IF NOT EXISTS favorites (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -219,7 +196,7 @@ CREATE TABLE IF NOT EXISTS favorites (
   UNIQUE (user_id, post_id)
 );
 
--- 13. ORDERS
+-- 11. ORDERS
 CREATE TABLE IF NOT EXISTS orders (
   id SERIAL PRIMARY KEY,
   post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
@@ -232,8 +209,6 @@ CREATE TABLE IF NOT EXISTS orders (
   payment_slip_url  TEXT,
   amount NUMERIC(12,2),
   tracking_number TEXT,
-  rating INTEGER CHECK (rating BETWEEN 1 AND 5),
-  review TEXT,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
@@ -266,37 +241,51 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
--- 14. TRADE ORDERS
-DROP TABLE IF EXISTS trade_orders CASCADE;
+-- 12. SELLER REVIEWS
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='seller_reviews') THEN
+    CREATE TABLE seller_reviews (
+      id SERIAL PRIMARY KEY,
+      reviewer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      seller_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      order_id    INTEGER NULL REFERENCES orders(id) ON DELETE SET NULL, 
+      rating INT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+      comment     TEXT NOT NULL DEFAULT '',
+      created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+      CONSTRAINT chk_no_self_review CHECK (reviewer_id <> seller_id),
+      CONSTRAINT uniq_reviewer_seller UNIQUE (reviewer_id, seller_id)
+    );
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname='idx_seller_reviews_seller') THEN
+    CREATE INDEX idx_seller_reviews_seller ON seller_reviews(seller_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname='idx_seller_reviews_reviewer') THEN
+    CREATE INDEX idx_seller_reviews_reviewer ON seller_reviews(reviewer_id);
+  END IF;
+END
+$$ LANGUAGE plpgsql;
 
--- สร้างตาราง trade_orders ใหม่
-CREATE TABLE trade_orders (
+-- 13. TRADE ORDERS
+CREATE TABLE IF NOT EXISTS trade_orders (
   id SERIAL PRIMARY KEY,
-  trade_id    INTEGER NOT NULL REFERENCES trades(id) ON DELETE CASCADE,
-  post_id     INTEGER REFERENCES posts(id)  ON DELETE CASCADE,  -- ใช้ในฝั่ง proposer (สิ่งที่ owner โพสต์ไว้)
-  offered_trade_id INTEGER REFERENCES trades(id) ON DELETE CASCADE, -- ใช้ในฝั่ง owner (สิ่งที่ proposer เสนอมา)
-  sender_id   INTEGER NOT NULL REFERENCES users(id)  ON DELETE CASCADE, -- คนส่งของ
-  receiver_id INTEGER NOT NULL REFERENCES users(id)  ON DELETE CASCADE, -- คนรับของ
-  status VARCHAR(20) NOT NULL DEFAULT 'waiting_shipping', -- waiting_shipping | shipping | completed | cancelled
+  trade_id INTEGER NOT NULL REFERENCES trades(id) ON DELETE CASCADE,
+  sender_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  receiver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
   name TEXT,
   phone VARCHAR(10),
   address TEXT,
   tracking_number TEXT,
+  status VARCHAR(20) NOT NULL DEFAULT 'waiting_shipping',
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  
-  -- ตรวจสอบว่าต้องมีอย่างน้อยหนึ่ง (post_id หรือ offered_trade_id)
-  CONSTRAINT chk_trade_orders_has_target CHECK (
-    (post_id IS NOT NULL) OR (offered_trade_id IS NOT NULL)
-  ),
-  
-  -- ตรวจสอบสถานะ
   CONSTRAINT chk_trade_order_status CHECK (
     status IN ('waiting_shipping','shipping','completed','cancelled')
-  )
+  ),
+
+  CONSTRAINT uniq_trade_order UNIQUE (trade_id, sender_id, receiver_id)
 );
 
--- Indexes เพื่อให้ query เร็วขึ้น
-CREATE INDEX idx_trade_orders_sender    ON trade_orders(sender_id);
-CREATE INDEX idx_trade_orders_receiver  ON trade_orders(receiver_id);
-CREATE INDEX idx_trade_orders_trade     ON trade_orders(trade_id);
+CREATE INDEX IF NOT EXISTS idx_trade_orders_sender    ON trade_orders(sender_id);
+CREATE INDEX IF NOT EXISTS idx_trade_orders_receiver  ON trade_orders(receiver_id);
+CREATE INDEX IF NOT EXISTS idx_trade_orders_trade     ON trade_orders(trade_id);

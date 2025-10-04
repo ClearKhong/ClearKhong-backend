@@ -142,12 +142,15 @@ router.post('/:id/buy', requireAuth, uploadSlip.single('payment_slip_url'), asyn
   );
   
   // แจ้งเตือนผู้ขาย
-  await query('INSERT INTO notifications (user_id, message) VALUES ($1,$2)',
-    [seller_id, 'New order waiting for confirmation. Please check the payment slip.']);
+  await query('INSERT INTO notifications (user_id, message, post_id, actor_id) VALUES ($1,$2,$3,$4)',
+    [seller_id, 'New order waiting for confirmation. Please check the payment slip.',
+      post_id,
+      buyer_id
+    ]
+  );
 
   res.json({ ok: true, order: orderRes.rows[0] });
 });
-
 
 // โปรโมทโพสต์ (ต้องล็อกอิน)
 router.post('/:id/promote', requireAuth, async (req,res)=>{
