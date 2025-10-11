@@ -41,20 +41,51 @@ const uploadSlip = multer({ storage: slipStorage });
 // ดึงโพสต์ทั้งหมด (ค้นหา/กรองได้)
 router.get('/', async (req, res) => {
   const { q, tag } = req.query;
-  let sql = `SELECT p.*,u.username FROM posts p JOIN users u ON u.id=p.user_id WHERE status='approved'`;
+  let sql = `
+    SELECT p.*, u.username, 
+           COALESCE(ROUND(AVG(sr.rating)::numeric, 1), 0) AS seller_rating,
+           COALESCE(COUNT(sr.rating), 0) AS review_count
+    FROM posts p 
+    JOIN users u ON u.id = p.user_id 
+    LEFT JOIN seller_reviews sr ON sr.seller_id = p.user_id
+    WHERE status='approved'
+  `;
   const ps = [];
-  if (q)
-    { ps.push('%' + q + '%'); sql += ` AND LOWER(p.title) LIKE LOWER($${ps.length})`; }
+  if (q) {
+    ps.push('%' + q + '%'); 
+    sql += ` AND LOWER(p.title) LIKE LOWER($${ps.length})`;
+  }
   if (tag) {
     ps.push(tag);
     sql += ` AND $${ps.length} = ANY(p.tags)`;
-  } sql += ' ORDER BY (p.promoted_at IS NOT NULL) DESC, p.promoted_at DESC NULLS LAST, p.created_at DESC';
-  const r=await query(sql,ps); res.json(r.rows); });
+  }
+  sql += ` 
+    GROUP BY p.id, u.username
+    ORDER BY (p.promoted_at IS NOT NULL) DESC, p.promoted_at DESC NULLS LAST, p.created_at DESC
+  `;
+  const r = await query(sql, ps); 
+  res.json(r.rows); 
+});
 
 // ดึงรายละเอียดโพสต์ตาม id
-router.get('/:id', async (req,res)=>{ const r=await query(`SELECT p.*, u.id AS author_id, u.username AS author_username, u.profile_image_url AS author_profile_image_url FROM posts p JOIN users u ON u.id=p.user_id WHERE p.id=$1`,[req.params.id]);
+router.get('/:id', async (req, res) => {
+  const sql = `
+    SELECT p.*, 
+           u.id AS author_id, 
+           u.username AS author_username, 
+           u.profile_image_url AS author_profile_image_url,
+           COALESCE(ROUND(AVG(sr.rating)::numeric, 1), 0) AS seller_rating,
+           COALESCE(COUNT(sr.rating), 0) AS review_count
+    FROM posts p 
+    JOIN users u ON u.id = p.user_id 
+    LEFT JOIN seller_reviews sr ON sr.seller_id = p.user_id
+    WHERE p.id = $1
+    GROUP BY p.id, u.id, u.username, u.profile_image_url
+  `;
+  const r = await query(sql, [req.params.id]);
   if (!r.rowCount)
-    return res.status(404).json({ error: 'not found' }); res.json(r.rows[0]);
+    return res.status(404).json({ error: 'ไม่พบโพสต์' });
+  res.json(r.rows[0]);
 });
 
 // สร้างโพสต์ใหม่ (อัปโหลดรูปได้ ต้องล็อกอิน)
@@ -79,9 +110,9 @@ router.post('/', requireAuth, multerArray('images', 10), async (req,res)=>{
   // enforce 4-10 uploaded images
   const uploaded = req.files || [];
   if (!uploaded.length)
-    return res.status(400).json({ error: 'You must upload between 4 and 10 images' });
+    return res.status(400).json({ error: 'ต้องอัปโหลดระหว่าง 4 ถึง 10 รูปภาพ' });
   if (uploaded.length < 4 || uploaded.length > 10)
-    return res.status(400).json({ error: 'Images must be between 4 and 10 files' });
+    return res.status(400).json({ error: 'ต้องอัปโหลดระหว่าง 4 ถึง 10 รูปภาพ' });
   const images = uploaded.map(f => ('/uploads/posts/'+f.filename));
   const image = JSON.stringify(images)
   if (!title || !description || (!isSell && !isTrade))
@@ -98,9 +129,9 @@ router.post('/:id/buy', requireAuth, uploadSlip.single('payment_slip_url'), asyn
   const buyer_id = req.user.id;
   let { name, phone, address } = req.body; 
 
-  if (!post_id) return res.status(400).json({ error: 'postId is required' });
+  if (!post_id) return res.status(400).json({ error: 'ต้องระบุ postId' });
 
-  if (!req.file) return res.status(400).json({ error: 'Payment slip is required (1 file)' });
+  if (!req.file) return res.status(400).json({ error: 'ต้องแนบสลิปการชำระเงิน (1 ไฟล์)' });
 
   const uploadPath = '/uploads/slips/' + req.file.filename; 
 
@@ -118,17 +149,17 @@ router.post('/:id/buy', requireAuth, uploadSlip.single('payment_slip_url'), asyn
   }
 }
   const postRes = await query('SELECT user_id, price, status FROM posts WHERE id=$1', [post_id]);
-  if (!postRes.rowCount) return res.status(404).json({ error: 'Post not found' });
+  if (!postRes.rowCount) return res.status(404).json({ error: 'ไม่พบโพสต์' });
 
   const seller_id = postRes.rows[0].user_id;
   const amount = postRes.rows[0].price || 0;
 
-  if (seller_id === buyer_id) return res.status(400).json({ error: 'Cannot buy your own post' });
-  if (postRes.rows[0].status !== 'approved') return res.status(400).json({ error: 'Cannot buy this post' });
+  if (seller_id === buyer_id) return res.status(400).json({ error: 'ไม่สามารถซื้อโพสต์ของตัวเองได้' });
+  if (postRes.rows[0].status !== 'approved') return res.status(400).json({ error: 'ไม่สามารถซื้อโพสต์นี้ได้' });
 
   // ตรวจสอบ order ซ้ำ
   const existing = await query('SELECT 1 FROM orders WHERE post_id=$1 AND buyer_id=$2', [post_id, buyer_id]);
-  if (existing.rowCount) return res.status(400).json({ error: 'Order already exists' });
+  if (existing.rowCount) return res.status(400).json({ error: 'มีคำสั่งซื้ออยู่แล้ว' });
 
   const orderRes = await query(
     `INSERT INTO orders (post_id, buyer_id, seller_id, status, name, phone, address, payment_slip_url, amount)
@@ -143,7 +174,7 @@ router.post('/:id/buy', requireAuth, uploadSlip.single('payment_slip_url'), asyn
   
   // แจ้งเตือนผู้ขาย
   await query('INSERT INTO notifications (user_id, message, post_id, actor_id) VALUES ($1,$2,$3,$4)',
-    [seller_id, 'New order waiting for confirmation. Please check the payment slip.',
+    [seller_id, 'มีคำสั่งซื้อใหม่รอการยืนยัน กรุณาตรวจสอบสลิปการชำระเงิน',
       post_id,
       buyer_id
     ]
@@ -158,19 +189,19 @@ router.post('/:id/promote', requireAuth, async (req,res)=>{
   const cost = 20;
   const post = await query(`SELECT user_id,status,promoted FROM posts WHERE id=$1`, [id]);
   if (!post.rowCount)
-    return res.status(404).json({ error: 'Not found' });
+    return res.status(404).json({ error: 'ไม่พบโพสต์' });
   const p = post.rows[0];
   if (p.user_id !== req.user.id)
     return res.status(403).json({ error: 'Forbidden' });
   if (p.status !== 'approved')
-    return res.status(400).json({ error: 'Post must be approved before promoting' });
+    return res.status(400).json({ error: 'โพสต์ต้องได้รับการอนุมัติก่อนที่จะโปรโมท' });
   if (p.promoted)
-    return res.status(400).json({ error: 'Already promoted' });
+    return res.status(400).json({ error: 'โพสต์นี้ได้รับการโปรโมทแล้ว' });
 
   const bal = await query(`SELECT tokens FROM users WHERE id=$1`, [req.user.id]);
   const tk = bal.rows[0].tokens || 0;
   if (tk < cost)
-    return res.status(400).json({ error: 'Not enough tokens' });
+    return res.status(400).json({ error: 'token ไม่เพียงพอ' });
 
   await query(`UPDATE users SET tokens=tokens-$1 WHERE id=$2`,[cost,req.user.id]);
   await query(`UPDATE posts SET promoted=true, promoted_at=NOW() WHERE id=$1`,[id]);
@@ -183,15 +214,15 @@ router.put('/:id', requireAuth, multerArray('images', 10), async (req,res)=>{
   const id = Number(req.params.id);
   const owner = await query(`SELECT user_id, status FROM posts WHERE id=$1`, [id]);
   if (!owner.rowCount)
-    return res.status(404).json({ error: 'Not found' });
+    return res.status(404).json({ error: 'ไม่พบโพสต์' });
   if (owner.rows[0].user_id !== req.user.id)
     return res.status(403).json({ error: 'Forbidden' });
   if (owner.rows[0].status === 'waiting')
-    return res.status(400).json({ error: 'Post is waiting; cannot edit' });
+    return res.status(400).json({ error: 'โพสต์กำลังรอการอนุมัติ; ไม่สามารถแก้ไขได้' });
   if (owner.rows[0].status === 'pending')
-    return res.status(400).json({ error: 'Post is pending; cannot edit' });
+    return res.status(400).json({ error: 'โพสต์กำลังรอการอนุมัติ; ไม่สามารถแก้ไขได้' });
   if (owner.rows[0].status === 'approved')
-    return res.status(400).json({ error: 'Already published' });
+    return res.status(400).json({ error: 'โพสต์นี้ได้รับการเผยแพร่แล้ว' });
 
   const { title, description } = req.body;
   const isSell = (typeof req.body.is_sell !== 'undefined') ? ['true','on','1','yes'].includes(String(req.body.is_sell).toLowerCase()) : null;
@@ -214,7 +245,7 @@ router.put('/:id', requireAuth, multerArray('images', 10), async (req,res)=>{
   if (req.files && req.files.length) {
     const cnt = req.files.length;
     if (cnt < 4 || cnt > 10)
-      return res.status(400).json({ error: 'When replacing images, upload between 4 and 10 files' });
+      return res.status(400).json({ error: 'เมื่อทำการแทนที่รูปภาพ ให้ทำการอัปโหลดระหว่าง 4 ถึง 10 ไฟล์' });
   }
 
   const sets = []; const ps = [id];
@@ -238,7 +269,7 @@ router.put('/:id', requireAuth, multerArray('images', 10), async (req,res)=>{
   //แก้เสร็จ->pending
   push('status', 'pending');
   if (!sets.length)
-    return res.status(400).json({ error: 'No changes' });
+    return res.status(400).json({ error: 'ไม่มีการเปลี่ยนแปลง' });
   const r = await query(`UPDATE posts SET ${sets.join(', ')} WHERE id=$1 RETURNING *`, ps);
   res.json(r.rows[0]);
 });
@@ -248,33 +279,11 @@ router.delete('/:id', requireAuth, async (req,res)=>{
   const id = Number(req.params.id);
   const owner = await query(`SELECT user_id FROM posts WHERE id=$1`, [id]);
   if (!owner.rowCount)
-    return res.status(404).json({ error: 'not found' });
+    return res.status(404).json({ error: 'ไม่พบโพสต์' });
   if (owner.rows[0].user_id !== req.user.id)
     return res.status(403).json({ error: 'forbidden' });
   await query(`DELETE FROM posts WHERE id=$1`, [id]);
   res.json({ok:true});
-});
-
-// ยืนยันโพสต์ (publish) หลังรออนุมัติ (ต้องล็อกอิน)
-router.post('/:id/publish', requireAuth, async (req,res)=>{
-  const id = Number(req.params.id);
-  const r = await query(`SELECT user_id,status FROM posts WHERE id=$1`, [id]);
-  if (!r.rowCount)
-    return res.status(404).json({ error: 'not found' });
-  const row = r.rows[0];
-  if (row.user_id !== req.user.id)
-    return res.status(403).json({ error: 'forbidden' });
-  if (row.status !== 'waiting')
-    return res.status(400).json({ error: 'Post must be waiting' });
-  const cost = 10;
-  const u = await query(`SELECT tokens FROM users WHERE id=$1`, [req.user.id]);
-  const tk = u.rows[0]?.tokens || 0;
-  if (tk < cost)
-    return res.status(400).json({ error: 'Not enough tokens' });
-  await query(`UPDATE users SET tokens=tokens-$1 WHERE id=$2`, [cost, req.user.id]);
-  await query(`UPDATE posts SET status='approved' WHERE id=$1`, [id]);
-  await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2)`, [req.user.id, 'Your post is now published']);
-  res.json({ok:true, tokens: tk - cost});
 });
 
 // ส่งโพสต์ที่ถูกปฏิเสธใหม่ (resubmit) (ต้องล็อกอิน)
@@ -282,12 +291,12 @@ router.post('/:id/resubmit', requireAuth, async (req,res)=>{
   const id = Number(req.params.id);
   const r = await query(`SELECT user_id,status FROM posts WHERE id=$1`, [id]);
   if (!r.rowCount)
-    return res.status(404).json({ error: 'not found' });
+    return res.status(404).json({ error: 'ไม่พบโพสต์' });
   const row = r.rows[0];
   if (row.user_id !== req.user.id)
     return res.status(403).json({ error: 'forbidden' });
   if (row.status !== 'rejected')
-    return res.status(400).json({ error: 'Only rejected posts can be resubmitted' });
+    return res.status(400).json({ error: 'มีเพียงโพสต์ที่ถูกปฏิเสธเท่านั้นที่สามารถส่งใหม่ได้' });
   await query(`UPDATE posts SET status='pending' WHERE id=$1`, [id]);
   res.json({ok:true});
 });
