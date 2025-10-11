@@ -744,20 +744,6 @@ paths:
       responses:
         "200":
           description: OK
-  /api/posts/{id}/publish:
-    post:
-      tags:
-        - Posts
-      summary: Publish post
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: OK
   /api/posts/{id}/resubmit:
     post:
       tags:
@@ -1434,10 +1420,10 @@ paths:
         - Reviews
       summary: make a review
       description: >
-       Seller-level review: Give rating 1-5 (integer) + comment.  
-       Cannot review yourself. 
-       Requires a valid `orderId` where the order is in `review` state.  
-       After a review is submitted, the order status will change to `completed`.
+        Seller-level review: Give rating 1-5 (integer) + comment.  
+        Cannot review yourself. 
+        Requires a valid `orderId` where the order is in `review` state.  
+        After a review is submitted, the order status will change to `completed`.
       requestBody:
         required: true
         content:

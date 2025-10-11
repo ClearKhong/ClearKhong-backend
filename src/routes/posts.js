@@ -286,28 +286,6 @@ router.delete('/:id', requireAuth, async (req,res)=>{
   res.json({ok:true});
 });
 
-// ยืนยันโพสต์ (publish) หลังรออนุมัติ (ต้องล็อกอิน)
-router.post('/:id/publish', requireAuth, async (req,res)=>{
-  const id = Number(req.params.id);
-  const r = await query(`SELECT user_id,status FROM posts WHERE id=$1`, [id]);
-  if (!r.rowCount)
-    return res.status(404).json({ error: 'ไม่พบโพสต์' });
-  const row = r.rows[0];
-  if (row.user_id !== req.user.id)
-    return res.status(403).json({ error: 'forbidden' });
-  if (row.status !== 'waiting')
-    return res.status(400).json({ error: 'โพสต์ต้องอยู่ในสถานะรอ' });
-  const cost = 10;
-  const u = await query(`SELECT tokens FROM users WHERE id=$1`, [req.user.id]);
-  const tk = u.rows[0]?.tokens || 0;
-  if (tk < cost)
-    return res.status(400).json({ error: 'token ไม่เพียงพอ' });
-  await query(`UPDATE users SET tokens=tokens-$1 WHERE id=$2`, [cost, req.user.id]);
-  await query(`UPDATE posts SET status='approved' WHERE id=$1`, [id]);
-  await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2)`, [req.user.id, 'โพสต์ของคุณได้รับการเผยแพร่แล้ว']);
-  res.json({ok:true, tokens: tk - cost});
-});
-
 // ส่งโพสต์ที่ถูกปฏิเสธใหม่ (resubmit) (ต้องล็อกอิน)
 router.post('/:id/resubmit', requireAuth, async (req,res)=>{
   const id = Number(req.params.id);
