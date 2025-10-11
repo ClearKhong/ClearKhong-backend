@@ -28,8 +28,8 @@ router.get('/myfavoite', requireAuth, async (req, res) => {
 
 router.post('/togglefavorite', requireAuth, async (req, res) => {
   const { post_id } = req.body;
-  if (!post_id) return res.status(400).json({ error: 'post_id is required' });
-
+  if (!post_id)
+    return res.status(400).json({ error: 'ต้องระบุ post_id' });
   
   const user_id = req.user.id;
 
@@ -53,7 +53,4 @@ router.post('/togglefavorite', requireAuth, async (req, res) => {
   }
 });
 
-
-
 export default router;
-

@@ -22,14 +22,14 @@ router.get('/pending', async (req, res) => {
 router.post('/posts/:id/approve', async (req,res)=>{ const r=await query(`UPDATE posts SET status='waiting' WHERE id=$1 RETURNING id, user_id`,[req.params.id]);
   if (!r.rowCount)
     return res.status(404).json({ error: 'not found' });
-  await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2)`,[r.rows[0].user_id,'Your post has been approved']);
+  await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2)`,[r.rows[0].user_id,'โพสต์ของคุณได้รับการอนุมัติแล้ว']);
   res.json({ok:true}); });
 
 // ปฏิเสธโพสต์ที่รอการอนุมัติ (เปลี่ยนสถานะเป็น rejected)
 router.post('/posts/:id/reject', async (req,res)=>{ const r=await query(`UPDATE posts SET status='rejected' WHERE id=$1 RETURNING id, user_id`,[req.params.id]);
   if (!r.rowCount)
     return res.status(404).json({ error: 'not found' });
-  await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2)`,[r.rows[0].user_id,'Your post has been rejected']);
+  await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2)`,[r.rows[0].user_id,'โพสต์ของคุณถูกปฏิเสธ']);
   res.json({ok:true}); });
 
 // ดึงรายชื่อผู้ใช้ทั้งหมด
@@ -42,7 +42,7 @@ router.get('/users', async (req, res) => {
 router.post('/users/:id/suspend', async (req, res) => {
   const u = await query('SELECT role FROM users WHERE id=$1', [req.params.id]);
   if (u.rows[0]?.role === 'admin')
-    return res.status(400).json({ error: 'Unable to suspend admin account' });
+    return res.status(400).json({ error: 'ไม่สามารถระงับบัญชีแอดมินได้' });
   await query(`UPDATE users SET is_active=false WHERE id=$1`, [req.params.id]);
   await query(`DELETE FROM posts WHERE user_id=$1`, [req.params.id]); res.json({ ok: true, deleted: true });
 });
@@ -84,7 +84,7 @@ router.get('/reports/:id', async (req,res)=>{
     [req.params.id]
   );
   if (!r.rowCount)
-    return res.status(404).json({ error: 'not found' });
+    return res.status(404).json({ error: 'ไม่พบ' });
   res.json(r.rows[0]);
 });
 
@@ -102,7 +102,7 @@ router.get('/users/:id', async (req, res) => {
   const id = Number(req.params.id);
   const r = await query(`SELECT id, username, phone, email, address, bio, profile_image_url, tokens, role, is_active FROM users WHERE id=$1`, [id]);
   if (!r.rowCount)
-    return res.status(404).json({ error: 'not found' });
+    return res.status(404).json({ error: 'ไม่พบ' });
   res.json(r.rows[0]);
 });
 
@@ -123,7 +123,7 @@ router.put('/users/:id', upload.single('profileImage'), async (req, res) => {
   const phoneOk = !phone || /^\d{10}$/.test(String(phone));
   const emailOk = !email || String(email).includes('@');
   if (!phoneOk)
-    return res.status(400).json({ error: 'Phone must be 10 digits' });
+    return res.status(400).json({ error: 'เบอร์โทรต้องมี 10 หลัก' });
   if (!emailOk)
     return res.status(400).json({ error: 'Email must contain @' });
   const img = req.file ? ('/uploads/avatars/' + req.file.filename) : null;
@@ -135,6 +135,6 @@ router.put('/users/:id', upload.single('profileImage'), async (req, res) => {
     RETURNING id,username,phone,email,profile_image_url,tokens,role,is_active`, 
     [id, phone || null, email || null, img]);
   if (!r.rowCount)
-    return res.status(404).json({ error: 'not found' });
+    return res.status(404).json({ error: 'ไม่พบ' });
   res.json(r.rows[0]);
 });

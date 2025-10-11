@@ -20,7 +20,7 @@ router.get('/public/:id', async (req, res) => {
     [uid]
   );
   if (!u.rowCount)
-    return res.status(404).json({ error: 'user not found' });
+    return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
 
   const posts = await query(
     `SELECT id, title, status, created_at
@@ -50,9 +50,9 @@ router.put('/me', requireAuth, upload.single('profileImage'), async (req, res) =
   const phoneOk = !phone || /^\d{10}$/.test(String(phone));
   const emailOk = !email || String(email).includes('@');
   if (!phoneOk)
-    return res.status(400).json({ error: 'Phone must be 10 digits' });
+    return res.status(400).json({ error: 'เบอร์โทรศัพท์ต้องมี 10 หลัก' });
   if (!emailOk)
-    return res.status(400).json({ error: 'Email must contain @' });
+    return res.status(400).json({ error: 'อีเมลต้องมี @' });
 
   const img = req.file ? ('/uploads/avatars/' + req.file.filename) : null;
 

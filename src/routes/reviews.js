@@ -16,24 +16,24 @@ router.post('/', requireAuth, async (req, res) => {
     const { sellerId, rating, comment, orderId = null } = req.body ?? {};
 
     if (!Number.isInteger(Number(sellerId)) || Number(sellerId) <= 0)
-      return res.status(400).json({ error: 'sellerId must be a positive integer' });
+      return res.status(400).json({ error: 'sellerId ต้องเป็นจำนวนเต็มบวก' });
     if (!isValidRating(rating))
-      return res.status(400).json({ error: 'rating must be an integer between 1 and 5' });
+      return res.status(400).json({ error: 'rating ต้องเป็นจำนวนเต็มระหว่าง 1 ถึง 5' });
     if (!comment || String(comment).trim().length === 0)
-      return res.status(400).json({ error: 'comment is required' });
+      return res.status(400).json({ error: 'comment เป็นข้อมูลที่จำเป็น' });
     if (Number(sellerId) === Number(reviewerId))
-      return res.status(403).json({ error: 'cannot review yourself' });
+      return res.status(403).json({ error: 'ไม่สามารถรีวิวตัวเองได้' });
 
     const s = await query('SELECT id FROM users WHERE id=$1', [sellerId]);
     if (s.rows.length === 0)
-      return res.status(404).json({ error: 'seller not found' });
+      return res.status(404).json({ error: 'ไม่พบผู้ขาย' });
 
     if (orderId) {
       const o = await query('SELECT status, seller_id, post_id FROM orders WHERE id=$1', [orderId]);
       if (o.rows.length === 0)
-        return res.status(404).json({ error: 'order not found' });
+        return res.status(404).json({ error: 'ไม่พบคำสั่งซื้อ' });
       if (o.rows[0].status !== 'review')
-        return res.status(400).json({ error: 'This order has not been completed yet and cannot be reviewed' });
+        return res.status(400).json({ error: 'คำสั่งซื้อนี้ยังไม่เสร็จสมบูรณ์และไม่สามารถรีวิวได้' });
 
       const insertSQL = `
         INSERT INTO seller_reviews (reviewer_id, seller_id, order_id, rating, comment)
@@ -70,12 +70,12 @@ router.post('/', requireAuth, async (req, res) => {
       return res.status(201).json(ins.rows[0]);
     }
 
-    return res.status(400).json({ error: 'orderId is required for review' });
+    return res.status(400).json({ error: 'ต้องระบุ orderId สำหรับการรีวิว' });
   } catch (err) {
     if (err?.code === '23505')
-      return res.status(409).json({ error: 'you have already reviewed this seller' });
+      return res.status(409).json({ error: 'คุณได้รีวิวผู้ขายนี้ไปแล้ว' });
     if (err?.code === '23514')
-      return res.status(400).json({ error: 'rating must be an integer between 1 and 5' });
+      return res.status(400).json({ error: 'rating ต้องเป็นจำนวนเต็มระหว่าง 1 ถึง 5' });
     console.error(err);
     return res.status(500).json({ error: 'server error' });
   }

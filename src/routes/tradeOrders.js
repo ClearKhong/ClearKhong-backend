@@ -12,11 +12,11 @@ router.post('/trade/:tradeId/confirm', requireAuth, textOnly.none(), async (req,
 
   try {
     const t = await query('SELECT id, proposer_id, status FROM trades WHERE id=$1', [tradeId]);
-    if (!t.rowCount) return res.status(404).json({ error: 'trade not found' });
+    if (!t.rowCount) return res.status(404).json({ error: 'ไม่พบการเทรด' });
 
     const trade = t.rows[0];
-    if (trade.proposer_id !== userId) return res.status(403).json({ error: 'only proposer can confirm this trade' });
-    if (trade.status !== 'accepted_waiting_confirm') return res.status(400).json({ error: 'trade not accepted yet' });
+    if (trade.proposer_id !== userId) return res.status(403).json({ error: 'เฉพาะผู้เสนอเท่านั้นที่สามารถยืนยันการเทรดนี้ได้' });
+    if (trade.status !== 'accepted_waiting_confirm') return res.status(400).json({ error: 'การเทรดยังไม่ได้รับการยอมรับ' });
 
     const tp = await query(
       `SELECT tp.post_id, p.user_id AS owner_id
@@ -25,7 +25,7 @@ router.post('/trade/:tradeId/confirm', requireAuth, textOnly.none(), async (req,
        WHERE tp.trade_id=$1 LIMIT 1`,
       [tradeId]
     );
-    if (!tp.rowCount) return res.status(400).json({ error: 'owner post mapping not found' });
+    if (!tp.rowCount) return res.status(400).json({ error: 'ไม่พบการแมพโพสต์ของเจ้าของ' });
 
     const owner_post_id = tp.rows[0].post_id;
     const owner_id = tp.rows[0].owner_id;
@@ -44,9 +44,9 @@ router.post('/trade/:tradeId/confirm', requireAuth, textOnly.none(), async (req,
       }
     }
     if (phone && !/^\d{10}$/.test(phone)) {
-      return res.status(400).json({ error: 'Phone must be 10 digits' });
+      return res.status(400).json({ error: 'หมายเลขโทรศัพท์ต้องมี 10 หลัก' });
     }
-    if (!address) return res.status(400).json({ error: 'Shipping address is required' });
+    if (!address) return res.status(400).json({ error: 'ต้องระบุที่อยู่ในการจัดส่ง' });
 
     await query('BEGIN');
 
@@ -82,7 +82,7 @@ router.post('/trade/:tradeId/confirm', requireAuth, textOnly.none(), async (req,
     await query(
       `INSERT INTO notifications (user_id, message, post_id, actor_id)
        VALUES ($1,$2,$3,$4), ($4,$5,$3,$1)`,
-      [owner_id, 'Trade confirmed. Please prepare to send your item.', owner_post_id, trade.proposer_id, 'Trade confirmed. Please prepare to send your item.']
+      [owner_id, 'Trade confirmed. Please prepare to send your item.', owner_post_id, trade.proposer_id, 'การเทรดยืนยันแล้ว กรุณาเตรียมส่งสินค้า']
     );
 
     await query('COMMIT');
@@ -105,7 +105,7 @@ router.post('/trade/:id/trade-add-tracking', requireAuth, async (req, res) => {
   const { tracking_number } = req.body;
   const userId = req.user.id;
 
-  if (!tracking_number) return res.status(400).json({ error: 'tracking_number is required' });
+  if (!tracking_number) return res.status(400).json({ error: 'ต้องระบุ tracking number' });
 
   try {
     const r = await query(
@@ -115,12 +115,12 @@ router.post('/trade/:id/trade-add-tracking', requireAuth, async (req, res) => {
        RETURNING id,status,tracking_number,receiver_id,post_id`,
       [tracking_number, orderId, userId]
     );
-    if (!r.rowCount) return res.status(400).json({ error: 'Order not found or invalid state' });
+    if (!r.rowCount) return res.status(400).json({ error: 'ไม่พบคำสั่งซื้อหรือสถานะไม่ถูกต้อง' });
 
     await query(
       `INSERT INTO notifications (user_id,message,post_id,actor_id)
        VALUES ($1,$2,$3,$4)`,
-      [r.rows[0].receiver_id, `Your item has been shipped. Tracking: ${tracking_number}`, r.rows[0].post_id, userId]
+      [r.rows[0].receiver_id, `สินค้าของคุณได้ถูกจัดส่งแล้ว, tracking number: ${tracking_number}`, r.rows[0].post_id, userId]
     );
 
     res.json({ ok: true, order: r.rows[0] });
@@ -147,12 +147,12 @@ router.post('/trade/:id/trade-confirm-delivery', requireAuth, async (req, res) =
        RETURNING id,status,sender_id,post_id`,
       [orderId, userId]
     );
-    if (!r.rowCount) return res.status(400).json({ error: 'Order not found or invalid state' });
+    if (!r.rowCount) return res.status(400).json({ error: 'ไม่พบคำสั่งซื้อหรือสถานะไม่ถูกต้อง' });
 
     await query(
       `INSERT INTO notifications (user_id,message,post_id,actor_id)
        VALUES ($1,$2,$3,$4)`,
-      [r.rows[0].sender_id, 'Receiver confirmed delivery. Trade completed.', r.rows[0].post_id, userId]
+      [r.rows[0].sender_id, 'ผู้รับยืนยันการจัดส่ง สถานะการเทรดเสร็จสมบูรณ์', r.rows[0].post_id, userId]
     );
 
     res.json({ ok: true, order: r.rows[0] });
