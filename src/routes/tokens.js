@@ -11,6 +11,7 @@ router.post('/confirm', requireAuth, async (req,res)=>{ const amount=Number(req.
   if (cur + amount > 1000)
     return res.status(400).json({ error: 'Max tokens 1000' });
   const r2=await query(`UPDATE users SET tokens=tokens+$1 WHERE id=$2 RETURNING tokens`,[amount,req.user.id]);
-  await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2)`,[req.user.id,`Buy ${amount} tokens successful`]);
+  await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2)`,[req.user.id,`ซื้อ ${amount} tokens สำเร็จ`]);
   res.json({ok:true,tokens:r2.rows[0].tokens}); });
+  
 export default router;
