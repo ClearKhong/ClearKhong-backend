@@ -18,12 +18,39 @@ router.get('/pending', async (req, res) => {
   res.json(r.rows);
 });
 
-// อนุมัติโพสต์ที่รอการอนุมัติ (เปลี่ยนสถานะเป็น waiting)
-router.post('/posts/:id/approve', async (req,res)=>{ const r=await query(`UPDATE posts SET status='waiting' WHERE id=$1 RETURNING id, user_id`,[req.params.id]);
+// อนุมัติโพสต์ที่รอการอนุมัติ (เปลี่ยนสถานะเป็น approved) และหักโทเคนจากผู้ใช้
+router.post('/posts/:id/approve', async (req,res)=>{ 
+  const cost = 10; // ค่าใช้จ่ายในการโพสต์
+  
+  // ตรวจสอบโพสต์และผู้ใช้
+  const r = await query(`
+    SELECT p.id, p.user_id, u.tokens 
+    FROM posts p 
+    JOIN users u ON u.id = p.user_id 
+    WHERE p.id = $1 AND p.status = 'pending'
+  `, [req.params.id]);
+  
   if (!r.rowCount)
     return res.status(404).json({ error: 'not found' });
-  await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2)`,[r.rows[0].user_id,'โพสต์ของคุณได้รับการอนุมัติแล้ว']);
-  res.json({ok:true}); });
+  
+  const post = r.rows[0];
+  
+  // ตรวจสอบว่าผู้ใช้มีโทเคนเพียงพอ
+  if (post.tokens < cost)
+    return res.status(400).json({ error: 'ผู้ใช้มีโทเคนไม่เพียงพอ' });
+  
+  // หักโทเคนและอนุมัติโพสต์
+  await query(`UPDATE users SET tokens = tokens - $1 WHERE id = $2`, [cost, post.user_id]);
+  await query(`UPDATE posts SET status = 'approved' WHERE id = $1`, [req.params.id]);
+  
+  // ส่งแจ้งเตือน
+  await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2)`, [
+    post.user_id, 
+    'โพสต์ของคุณได้รับการอนุมัติและเผยแพร่แล้ว (หักโทเคน 10 tokens)'
+  ]);
+  
+  res.json({ok:true, tokensDeducted: cost}); 
+});
 
 // ปฏิเสธโพสต์ที่รอการอนุมัติ (เปลี่ยนสถานะเป็น rejected)
 router.post('/posts/:id/reject', async (req,res)=>{ const r=await query(`UPDATE posts SET status='rejected' WHERE id=$1 RETURNING id, user_id`,[req.params.id]);
