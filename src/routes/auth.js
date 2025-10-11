@@ -16,14 +16,14 @@ router.post('/register', async (req, res) => {
     const phoneOk = !phone || /^\d{10}$/.test(String(phone));
     const emailOk = !email || String(email).includes('@');
     if (!phoneOk)
-      return res.status(400).json({ error: 'Phone must be 10 digits' });
+      return res.status(400).json({ error: 'เบอร์โทรต้องมี 10 หลัก' });
     if (!emailOk)
-      return res.status(400).json({ error: 'Email must contain @' });
+      return res.status(400).json({ error: 'อีเมลต้องมี @' });
     if (!username || !password)
-      return res.status(400).json({ error: 'Missing username or password' });
+      return res.status(400).json({ error: 'ขาดข้อมูล username หรือ password' });
 
     const exists = await query('SELECT id FROM users WHERE username=$1', [username]);
-    if (exists.rowCount > 0) return res.status(409).json({ error: 'Username already exists' });
+    if (exists.rowCount > 0) return res.status(409).json({ error: 'ชื่อผู้ใช้งานมีอยู่แล้ว' });
 
     const hash = await bcrypt.hash(password, 10);
     const ins = await query(
@@ -61,7 +61,7 @@ router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     if (!username || !password)
-      return res.status(400).json({ error: 'Missing username or password' });
+      return res.status(400).json({ error: 'ขาดข้อมูล username หรือ password' });
 
     const r = await query(
       'SELECT id, username, role, password_hash, is_active FROM users WHERE username=$1',
@@ -69,11 +69,11 @@ router.post('/login', async (req, res) => {
     );
 
     if (!r.rowCount || !r.rows[0].is_active)
-      return res.status(400).json({ error: 'User not found or suspended' });
+      return res.status(400).json({ error: 'ไม่พบผู้ใช้หรือบัญชีถูกระงับ' });
 
     const ok = await bcrypt.compare(password, r.rows[0].password_hash);
     if (!ok)
-      return res.status(400).json({ error: 'Incorrect password' });
+      return res.status(400).json({ error: 'รหัสผ่านไม่ถูกต้อง' });
 
     const user = { id: r.rows[0].id, username: r.rows[0].username, role: r.rows[0].role };
     const token = jwt.sign({ id: user.id, role: user.role }, SECRET, { expiresIn: '7d' });

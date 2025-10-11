@@ -87,10 +87,14 @@ router.post('/:postId/new', requireAuth, upload.any(), async (req,res)=>{
   const pid = Number(req.params.postId);
 
   const post = await query('SELECT user_id, status, is_trade FROM posts WHERE id=$1', [pid]);
-  if (!post.rowCount) return res.status(404).json({ error: 'not found' });
-  if (post.rows[0].status !== 'approved') return res.status(400).json({ error: 'The post is not ready for trading yet.' });
-  if (post.rows[0].user_id === req.user.id) return res.status(400).json({ error: 'cannot offer trade on your own post' });
-  if (!post.rows[0].is_trade) return res.status(400).json({ error: 'this post does not accept trades' });
+  if (!post.rowCount)
+    return res.status(404).json({ error: 'ไม่พบโพสต์' });
+  if (post.rows[0].status !== 'approved')
+    return res.status(400).json({ error: 'โพสต์นี้ยังไม่พร้อมสำหรับการเทรด' });
+  if (post.rows[0].user_id === req.user.id)
+    return res.status(400).json({ error: 'ไม่สามารถเสนอการเทรดในโพสต์ของตนเองได้' });
+  if (!post.rows[0].is_trade)
+    return res.status(400).json({ error: 'โพสต์นี้ไม่รับการเทรด' });
 
   const existingTrade = await query(
     `SELECT tp.trade_id 
@@ -100,7 +104,7 @@ router.post('/:postId/new', requireAuth, upload.any(), async (req,res)=>{
     [pid, req.user.id]
   );
   if (existingTrade.rowCount) {
-    return res.status(400).json({ error: 'You have already offered a trade for this post' });
+    return res.status(400).json({ error: 'คุณได้เสนอการเทรดในโพสต์นี้ไปแล้ว' });
   }
   let items = buildItemsFromBody(req.body);
 
@@ -110,14 +114,14 @@ router.post('/:postId/new', requireAuth, upload.any(), async (req,res)=>{
       try {
         items = JSON.parse(items);
       } catch (e) {
-        return res.status(400).json({ error: 'Invalid items format' });
+        return res.status(400).json({ error: 'รูปแบบรายการไม่ถูกต้อง' });
       }
     }
     if (!Array.isArray(items)) {
       if (items && typeof items === 'object') {
         items = [items];
       } else {
-        return res.status(400).json({ error: 'Items must be an array or object' });
+        return res.status(400).json({ error: 'รายการต้องเป็น array หรือ object' });
       }
     }
   }
@@ -125,7 +129,7 @@ router.post('/:postId/new', requireAuth, upload.any(), async (req,res)=>{
     (it) => it.title || it.description || (it.tags && it.tags.length)
   );
   if (!items.length) {
-    return res.status(400).json({ error: 'At least one item is required' });
+    return res.status(400).json({ error: 'ต้องมีรายการอย่างน้อย 1 รายการ' });
   }
   const filesByItem = {};
   if (req.files) {
@@ -194,7 +198,8 @@ router.post('/:postId/new', requireAuth, upload.any(), async (req,res)=>{
 
   let hasSpecial = false;
   for (const it of items) {
-    if (!Array.isArray(it.tags)) continue;
+    if (!Array.isArray(it.tags))
+      continue;
     if (it.tags.some(tag => specialTags.includes(String(tag)))) {
       hasSpecial = true;
       break;
@@ -205,13 +210,13 @@ router.post('/:postId/new', requireAuth, upload.any(), async (req,res)=>{
     await query(
       `INSERT INTO notifications (user_id, message, post_id, actor_id)
       VALUES ($1, $2, $3, $4)`,
-      [post.rows[0].user_id, 'A trade offer matching your special tags was just submitted!', pid, req.user.id]
+      [post.rows[0].user_id, 'การเสนอการเทรดที่ตรงกับแท็กพิเศษของคุณถูกส่งไปแล้ว!', pid, req.user.id]
     );
   } else {
     await query(
       `INSERT INTO notifications (user_id, message, post_id, actor_id)
        VALUES ($1, $2, $3, $4)`,
-      [post.rows[0].user_id, 'New offer for trading', pid, req.user.id]
+      [post.rows[0].user_id, 'มีข้อเสนอการเทรดใหม่', pid, req.user.id]
     );    
   }
 
@@ -224,29 +229,35 @@ router.post('/:postId/reuse/:tradeId', requireAuth, async (req, res) => {
   const tradeId = Number(req.params.tradeId);
 
   const post = await query('SELECT user_id, status, is_trade FROM posts WHERE id=$1', [pid]);
-  if (!post.rowCount) return res.status(404).json({ error: 'not found' });
-  if (post.rows[0].status !== 'approved') return res.status(400).json({ error: 'The post is not ready for trading yet.' });
-  if (post.rows[0].user_id === req.user.id) return res.status(400).json({ error: 'cannot offer trade on your own post' });
-  if (!post.rows[0].is_trade) return res.status(400).json({ error: 'this post does not accept trades' });
+  if (!post.rowCount)
+    return res.status(404).json({ error: 'ไม่พบโพสต์' });
+  if (post.rows[0].status !== 'approved')
+    return res.status(400).json({ error: 'โพสต์นี้ยังไม่พร้อมสำหรับการเทรด' });
+  if (post.rows[0].user_id === req.user.id)
+    return res.status(400).json({ error: 'ไม่สามารถเสนอการเทรดในโพสต์ของตนเองได้' });
+  if (!post.rows[0].is_trade) return res.status(400).json({ error: 'โพสต์นี้ไม่รับการเทรด' });
 
-  if (!tradeId) return res.status(400).json({ error: 'No trade ID provided' });
+  if (!tradeId)
+    return res.status(400).json({ error: 'ไม่มี Trade ID ที่ระบุ' });
 
   const tradeRes = await query(
     'SELECT id, proposer_id, status FROM trades WHERE id=$1',
     [tradeId]
   );
 
-  if (!tradeRes.rowCount) return res.status(404).json({ error: 'Trade not found' });
+  if (!tradeRes.rowCount)
+    return res.status(404).json({ error: 'ไม่พบ Trade' });
 
   const trade = tradeRes.rows[0];
-  if (trade.proposer_id !== req.user.id || trade.status !== 'pending') 
-    return res.status(403).json({ error: 'You cannot use this trade' });
+  if (trade.proposer_id !== req.user.id || trade.status !== 'pending')
+    return res.status(403).json({ error: 'ไม่สามารถใช้ Trade นี้ได้' });
 
   const existing = await query(
     'SELECT 1 FROM trade_posts WHERE trade_id=$1 AND post_id=$2',
     [tradeId, pid]
   );
-  if (existing.rowCount) return res.status(400).json({ error: 'You have already offered this trade to this post' });
+  if (existing.rowCount)
+    return res.status(400).json({ error: 'คุณได้เสนอการเทรดนี้ในโพสต์แล้ว' });
 
   await query(
     'INSERT INTO trade_posts (trade_id, post_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
@@ -278,13 +289,13 @@ router.post('/:postId/reuse/:tradeId', requireAuth, async (req, res) => {
     await query(
       `INSERT INTO notifications (user_id, message, post_id, actor_id)
       VALUES ($1, $2, $3, $4)`,
-      [post.rows[0].user_id, 'A trade offer matching your special tags was just submitted!', pid, req.user.id]
+      [post.rows[0].user_id, 'ข้อเสนอการเทรดที่ตรงกับแท็กพิเศษของคุณถูกส่งไปแล้ว!', pid, req.user.id]
     );
   } else {
     await query(
       `INSERT INTO notifications (user_id, message, post_id, actor_id)
        VALUES ($1, $2, $3, $4)`,
-      [post.rows[0].user_id, 'New offer for trading', pid, req.user.id]
+      [post.rows[0].user_id, 'ข้อเสนอการเทรดใหม่', pid, req.user.id]
     );    
   }
   res.json({ ok: true, tradeId });
@@ -297,7 +308,7 @@ router.get('/:postId', requireAuth, async (req, res) => {
 
   const post = await query('SELECT user_id FROM posts WHERE id=$1', [pid]);
   if (!post.rowCount) {
-    return res.status(404).json({ error: 'not found' });
+    return res.status(404).json({ error: 'ไม่พบโพสต์' });
   }
 
   const isOwner = post.rows[0].user_id === req.user.id;
@@ -351,16 +362,17 @@ router.delete('/:tradeId', requireAuth, async (req, res) => {
   }
 
   const tradeRes = await query('SELECT id, proposer_id FROM trades WHERE id=$1', [tradeId]);
-  if (!tradeRes.rowCount) return res.status(404).json({ error: 'Trade not found' });
+  if (!tradeRes.rowCount)
+    return res.status(404).json({ error: 'ไม่พบการเทรด' });
 
   const trade = tradeRes.rows[0];
-  if (trade.proposer_id !== req.user.id) 
-    return res.status(403).json({ error: 'You cannot delete this trade' });
+  if (trade.proposer_id !== req.user.id)
+    return res.status(403).json({ error: 'คุณไม่สามารถลบการเทรดนี้ได้' });
 
   await query('DELETE FROM trade_items WHERE trade_id=$1', [tradeId]);
   await query('DELETE FROM trades WHERE id=$1', [tradeId]);
 
-  res.json({ ok: true, message: 'Trade deleted successfully' });
+  res.json({ ok: true, message: 'ลบการเทรดเรียบร้อยแล้ว' });
 });
 
 
@@ -377,9 +389,9 @@ router.post('/:postId/accept/:offerId', requireAuth, textOnly.none(), async (req
       [pid]
     );
     if (!post.rowCount) return res.status(404).json({ error: 'not found' });
-    if (post.rows[0].user_id !== ownerId) return res.status(403).json({ error: 'forbidden' });
+    if (post.rows[0].user_id !== ownerId) return res.status(403).json({ error: 'คุณไม่สามารถยอมรับข้อเสนอการเทรดในโพสต์ของตนเองได้' });
     if (post.rows[0].status !== 'approved' || !post.rows[0].is_trade)
-      return res.status(400).json({ error: 'post is not tradable' });
+      return res.status(400).json({ error: 'โพสต์นี้ไม่สามารถทำการเทรดได้' });
 
     const offer = await query(
       `SELECT t.id AS trade_id, t.proposer_id, t.status
@@ -388,10 +400,12 @@ router.post('/:postId/accept/:offerId', requireAuth, textOnly.none(), async (req
        WHERE t.id=$1 AND tp.post_id=$2`,
       [oid, pid]
     );
-    if (!offer.rowCount) return res.status(404).json({ error: 'offer not found' });
+    if (!offer.rowCount)
+      return res.status(404).json({ error: 'ไม่พบข้อเสนอการเทรด' });
 
     const { trade_id, proposer_id, status } = offer.rows[0];
-    if (status !== 'pending') return res.status(400).json({ error: 'offer not pending' });
+    if (status !== 'pending')
+      return res.status(400).json({ error: 'ข้อเสนอไม่อยู่ในสถานะรอการตอบรับ' });
 
     let { name, phone, address } = req.body;
     // ดึงข้อมูลจาก users ถ้าไม่ได้ส่งมา
@@ -402,15 +416,19 @@ router.post('/:postId/accept/:offerId', requireAuth, textOnly.none(), async (req
       );
     
       if (user.rowCount) {
-        if (!address) address = user.rows[0].address || null;
-        if (!name) name = user.rows[0].name || null;
-        if (!phone) phone = user.rows[0].phone || null;
+        if (!address)
+          address = user.rows[0].address || null;
+        if (!name)
+          name = user.rows[0].name || null;
+        if (!phone)
+          phone = user.rows[0].phone || null;
       }
     }
     if (phone && !/^\d{10}$/.test(phone)) {
-      return res.status(400).json({ error: 'Phone must be 10 digits' });
+      return res.status(400).json({ error: 'หมายเลขโทรศัพท์ต้องมี 10 หลัก' });
     }
-    if (!address) return res.status(400).json({ error: 'Shipping address is required' });
+    if (!address)
+      return res.status(400).json({ error: 'จำเป็นต้องระบุที่อยู่จัดส่งสินค้า' });
 
     const updTrade = await query(
       `UPDATE trades SET status='accepted_waiting_confirm'
@@ -418,7 +436,8 @@ router.post('/:postId/accept/:offerId', requireAuth, textOnly.none(), async (req
        RETURNING id`,
       [trade_id]
     );
-    if (!updTrade.rowCount) return res.status(400).json({ error: 'Trade already accepted or invalid' });
+    if (!updTrade.rowCount)
+      return res.status(400).json({ error: 'การเทรดถูกยอมรับแล้วหรือไม่ถูกต้อง' });
 
     const exists = await query(
       `SELECT id FROM trade_orders
@@ -449,12 +468,12 @@ router.post('/:postId/accept/:offerId', requireAuth, textOnly.none(), async (req
     await query(
       `INSERT INTO notifications (user_id, message, post_id, actor_id)
        VALUES ($1,$2,$3,$4)`,
-      [proposer_id, 'Your trade offer has been accepted. Please confirm to proceed.', pid, ownerId]
+      [proposer_id, 'ข้อเสนอการเทรดของคุณถูกยอมรับแล้ว กรุณายืนยันเพื่อดำเนินการต่อ', pid, ownerId]
     );
 
     res.json({ ok: true, message: 'Trade accepted, waiting proposer to confirm', tradeOrderId });
   } catch (err) {
-    console.error('accept trade error:', err);
+    console.error('เกิดข้อผิดพลาดในการยอมรับการเทรด:', err);
     res.status(500).json({ error: 'server error' });
   }
 });
@@ -490,7 +509,5 @@ router.post('/:postId/accept/:offerId', requireAuth, textOnly.none(), async (req
 
 //   res.json({ok:true, message: 'Trade accepted, waiting proposer to confirm'});
 // });
-
-
 
 export default router;

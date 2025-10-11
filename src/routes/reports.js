@@ -22,10 +22,10 @@ router.post('/', requireAuth, upload.array('images', 8), async (req,res)=>{
   try{
     const { target_user_id, details } = req.body;
     if (!target_user_id)
-      return res.status(400).json({ error: 'target_user_id required' });
+      return res.status(400).json({ error: 'ต้องระบุ target_user_id' });
     // ห้ามรายงานตัวเอง
     if (Number(target_user_id) === req.user.id) {
-      return res.status(400).json({ error: 'cannot report yourself' });
+      return res.status(400).json({ error: 'ไม่สามารถรายงานตัวเองได้' });
     }
     //เหตุผล
     let reasons = req.body.reasons;
@@ -55,7 +55,7 @@ router.post('/', requireAuth, upload.array('images', 8), async (req,res)=>{
     res.json({ ok: true, id: r.rows[0].id });
   }catch(e){
     console.error(e);
-    res.status(500).json({ error: 'failed to create report' });
+    res.status(500).json({ error: 'ไม่สามารถสร้างรายงานได้' });
   }
 });
 

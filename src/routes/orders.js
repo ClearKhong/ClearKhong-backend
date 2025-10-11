@@ -27,7 +27,7 @@ router.post('/:id/confirm-payment', requireAuth, async (req, res) => {
     );
 
     if (!r.rowCount) {
-      return res.status(400).json({ error: 'Order not found or invalid state' });
+      return res.status(400).json({ error: 'ไม่พบคำสั่งซื้อหรือสถานะไม่ถูกต้อง' });
     }
 
     // แจ้งเตือนผู้ซื้อ
@@ -36,7 +36,7 @@ router.post('/:id/confirm-payment', requireAuth, async (req, res) => {
        VALUES ($1,$2,$3,$4)`,
       [
         r.rows[0].buyer_id,
-        'Your payment has been confirmed. Waiting for seller to ship.',
+        'การชำระเงินของคุณได้รับการยืนยันแล้ว รอผู้ขายจัดส่ง',
         r.rows[0].post_id,
         userId
       ]
@@ -58,7 +58,7 @@ router.post('/:id/add-tracking', requireAuth, async (req, res) => {
   const { tracking_number } = req.body;
   const userId = req.user.id;
 
-  if (!tracking_number) return res.status(400).json({ error: 'tracking_number is required' });
+  if (!tracking_number) return res.status(400).json({ error: 'ต้องระบุ tracking_number' });
 
   try {
     const r = await query(`UPDATE orders
@@ -67,7 +67,7 @@ router.post('/:id/add-tracking', requireAuth, async (req, res) => {
       RETURNING id, status, tracking_number, buyer_id, post_id`,
       [tracking_number, orderId, userId]);
 
-    if (!r.rowCount) return res.status(400).json({ error: 'Order not found or invalid state' });
+    if (!r.rowCount) return res.status(400).json({ error: 'ไม่พบคำสั่งซื้อหรือสถานะไม่ถูกต้อง' });
 
     // แจ้งเตือนผู้ซื้อ
     await query(
@@ -75,7 +75,7 @@ router.post('/:id/add-tracking', requireAuth, async (req, res) => {
        VALUES ($1,$2,$3,$4)`,
       [
         r.rows[0].buyer_id,
-        `Your order has been shipped. Tracking number: ${tracking_number}`,
+        `การสั่งซื้อของคุณได้ถูกจัดส่งแล้ว tracking number: ${tracking_number}`,
         r.rows[0].post_id,
         userId
       ]
@@ -101,7 +101,7 @@ router.post('/:id/confirm-delivery', requireAuth, async (req, res) => {
       RETURNING id, status, seller_id, post_id`,
       [orderId, userId]);
 
-    if (!r.rowCount) return res.status(400).json({ error: 'Order not found or invalid state' });
+    if (!r.rowCount) return res.status(400).json({ error: 'ไม่พบคำสั่งซื้อหรือสถานะไม่ถูกต้อง' });
 
     // แจ้งเตือนผู้ขาย
     await query(
@@ -109,7 +109,7 @@ router.post('/:id/confirm-delivery', requireAuth, async (req, res) => {
        VALUES ($1,$2,$3,$4)`,
       [
         r.rows[0].seller_id,
-        'Buyer has confirmed delivery. Please wait for review.',
+        'ผู้ซื้อได้ยืนยันการจัดส่งแล้ว รอการรีวิว',
         r.rows[0].post_id,
         userId
       ]
@@ -159,7 +159,7 @@ router.get('/:id', requireAuth, async (req, res) => {
       [orderId, userId]
     );
 
-    if (!r.rowCount) return res.status(404).json({ error: 'Order not found' });
+    if (!r.rowCount) return res.status(404).json({ error: 'ไม่พบคำสั่งซื้อ' });
 
     res.json(r.rows[0]);
   } catch (err) {
