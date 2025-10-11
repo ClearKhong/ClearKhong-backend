@@ -41,20 +41,51 @@ const uploadSlip = multer({ storage: slipStorage });
 // ดึงโพสต์ทั้งหมด (ค้นหา/กรองได้)
 router.get('/', async (req, res) => {
   const { q, tag } = req.query;
-  let sql = `SELECT p.*,u.username FROM posts p JOIN users u ON u.id=p.user_id WHERE status='approved'`;
+  let sql = `
+    SELECT p.*, u.username, 
+           COALESCE(ROUND(AVG(sr.rating)::numeric, 1), 0) AS seller_rating,
+           COALESCE(COUNT(sr.rating), 0) AS review_count
+    FROM posts p 
+    JOIN users u ON u.id = p.user_id 
+    LEFT JOIN seller_reviews sr ON sr.seller_id = p.user_id
+    WHERE status='approved'
+  `;
   const ps = [];
-  if (q)
-    { ps.push('%' + q + '%'); sql += ` AND LOWER(p.title) LIKE LOWER($${ps.length})`; }
+  if (q) {
+    ps.push('%' + q + '%'); 
+    sql += ` AND LOWER(p.title) LIKE LOWER($${ps.length})`;
+  }
   if (tag) {
     ps.push(tag);
     sql += ` AND $${ps.length} = ANY(p.tags)`;
-  } sql += ' ORDER BY (p.promoted_at IS NOT NULL) DESC, p.promoted_at DESC NULLS LAST, p.created_at DESC';
-  const r=await query(sql,ps); res.json(r.rows); });
+  }
+  sql += ` 
+    GROUP BY p.id, u.username
+    ORDER BY (p.promoted_at IS NOT NULL) DESC, p.promoted_at DESC NULLS LAST, p.created_at DESC
+  `;
+  const r = await query(sql, ps); 
+  res.json(r.rows); 
+});
 
 // ดึงรายละเอียดโพสต์ตาม id
-router.get('/:id', async (req,res)=>{ const r=await query(`SELECT p.*, u.id AS author_id, u.username AS author_username, u.profile_image_url AS author_profile_image_url FROM posts p JOIN users u ON u.id=p.user_id WHERE p.id=$1`,[req.params.id]);
+router.get('/:id', async (req, res) => {
+  const sql = `
+    SELECT p.*, 
+           u.id AS author_id, 
+           u.username AS author_username, 
+           u.profile_image_url AS author_profile_image_url,
+           COALESCE(ROUND(AVG(sr.rating)::numeric, 1), 0) AS seller_rating,
+           COALESCE(COUNT(sr.rating), 0) AS review_count
+    FROM posts p 
+    JOIN users u ON u.id = p.user_id 
+    LEFT JOIN seller_reviews sr ON sr.seller_id = p.user_id
+    WHERE p.id = $1
+    GROUP BY p.id, u.id, u.username, u.profile_image_url
+  `;
+  const r = await query(sql, [req.params.id]);
   if (!r.rowCount)
-    return res.status(404).json({ error: 'not found' }); res.json(r.rows[0]);
+    return res.status(404).json({ error: 'not found' }); 
+  res.json(r.rows[0]);
 });
 
 // สร้างโพสต์ใหม่ (อัปโหลดรูปได้ ต้องล็อกอิน)

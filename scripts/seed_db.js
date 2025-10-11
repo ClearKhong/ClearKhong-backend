@@ -55,25 +55,25 @@ async function insertPostIfNotExists(p) {
 
 async function run() {
   const users = [
-    { name: 'admin', role: 'admin' },
-    { name: 'alice', role: 'user' },
-    { name: 'bob', role: 'user' },
-    { name: 'charlie', role: 'user' },
-    { name: 'diana', role: 'user' },
-    { name: 'eve', role: 'user' },
+    { name: 'admin', role: 'admin' }
+    // { name: 'alice', role: 'user' },
+    // { name: 'bob', role: 'user' },
+    // { name: 'charlie', role: 'user' },
+    // { name: 'diana', role: 'user' },
+    // { name: 'eve', role: 'user' },
   ];
 
   const ids = {};
   for (const u of users) ids[u.name] = await upsertUser(u.name, u.role);
 
-  const posts = [
-    { user_id: ids['alice'],   title: 'Vintage Camera',     description: 'Great condition', price: 1200, is_sell: true,  is_trade: false, tags: ['electronics'], status: 'approved' },
-    { user_id: ids['bob'],     title: 'Running Shoes',      description: 'Like new',        price: 80,   is_sell: true,  is_trade: false, tags: ['sports'],      status: 'approved' },
-    { user_id: ids['charlie'], title: 'Trade: Board Game',  description: 'Trade only',      price: null, is_sell: false, is_trade: true,  tags: ['toys'],        status: 'approved' },
-    { user_id: ids['diana'],   title: 'Trade: Headphones',  description: 'Trade for books', price: null, is_sell: false, is_trade: true,  tags: ['electronics'], status: 'approved' },
-    { user_id: ids['eve'],     title: 'Laptop or Trade',    description: 'Sell or trade',   price: 900,  is_sell: true,  is_trade: true,  tags: ['electronics'], status: 'pending' },
-  ];
-  for (const p of posts) await insertPostIfNotExists(p);
+  // const posts = [
+  //   { user_id: ids['alice'],   title: 'Vintage Camera',     description: 'Great condition', price: 1200, is_sell: true,  is_trade: false, tags: ['electronics'], status: 'approved' },
+  //   { user_id: ids['bob'],     title: 'Running Shoes',      description: 'Like new',        price: 80,   is_sell: true,  is_trade: false, tags: ['sports'],      status: 'approved' },
+  //   { user_id: ids['charlie'], title: 'Trade: Board Game',  description: 'Trade only',      price: null, is_sell: false, is_trade: true,  tags: ['toys'],        status: 'approved' },
+  //   { user_id: ids['diana'],   title: 'Trade: Headphones',  description: 'Trade for books', price: null, is_sell: false, is_trade: true,  tags: ['electronics'], status: 'approved' },
+  //   { user_id: ids['eve'],     title: 'Laptop or Trade',    description: 'Sell or trade',   price: 900,  is_sell: true,  is_trade: true,  tags: ['electronics'], status: 'pending' },
+  // ];
+  // for (const p of posts) await insertPostIfNotExists(p);
 
   console.log('✅ Seeded database');
 }
