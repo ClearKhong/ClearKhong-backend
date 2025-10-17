@@ -35,8 +35,13 @@ logs/
 # =========================
 # Uploaded files (runtime data)
 # =========================
-uploads/
+uploads/*
+!uploads/posts/
+!uploads/posts/**/*
 !uploads/.gitkeep
+# uploads/
+# !uploads/.gitkeep
+
 
 # =========================
 # Docker / Build files
