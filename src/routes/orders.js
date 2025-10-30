@@ -7,6 +7,7 @@ const router = Router();
 /**
  * ✅ Buyer กดซื้อ → สร้าง Order
  * state เริ่มต้น: waiting_payment อยู่ในหน้าโพสต์
+ */
 
 /**
  * ✅ Seller กดยืนยันเงินเข้า
@@ -20,9 +21,13 @@ router.post('/:id/confirm-payment', requireAuth, async (req, res) => {
     // ต้องเป็น seller เท่านั้น และต้องอยู่ในสถานะ waiting_confirm
     const r = await query(
       `UPDATE orders
-       SET status='payment_confirmed', updated_at=NOW()
-       WHERE id=$1 AND seller_id=$2 AND status='waiting_confirm'
-       RETURNING id, status, buyer_id, post_id`,  
+       SET status = 'payment_confirmed',
+           confirmed_at = NOW(),   
+           updated_at = NOW()
+       WHERE id = $1
+         AND seller_id = $2
+         AND status = 'waiting_confirm'
+       RETURNING id, status, buyer_id, post_id`,
       [orderId, userId]
     );
 
@@ -44,9 +49,10 @@ router.post('/:id/confirm-payment', requireAuth, async (req, res) => {
 
     res.json({ ok: true, order: r.rows[0] });
   } catch (err) {
-    console.error(err);
+    console.error("❌ SQL Error:", err.message);
     res.status(500).json({ error: 'server error' });
   }
+  
 });
 
 /**
@@ -61,16 +67,17 @@ router.post('/:id/add-tracking', requireAuth, async (req, res) => {
   if (!shipping_service) return res.status(400).json({ error: 'ต้องระบุ shipping_service' });
 
   try {
-    const r = await query(`
-      UPDATE orders
-      SET tracking_number = $1,
-          shipping_service = $2,  
-          status = 'shipping',
-          updated_at = NOW()
-      WHERE id = $3
-        AND seller_id = $4
-        AND status = 'payment_confirmed'
-      RETURNING id, status, tracking_number, shipping_service, buyer_id, post_id`,
+    const r = await query(
+      `UPDATE orders
+       SET tracking_number = $1,
+           shipping_service = $2,
+           status = 'shipping',
+           shipped_at = NOW(),    
+           updated_at = NOW()
+       WHERE id = $3
+         AND seller_id = $4
+         AND status = 'payment_confirmed'
+       RETURNING id, status, tracking_number, shipping_service, buyer_id, post_id`,
       [tracking_number, shipping_service, orderId, userId]
     );
 
@@ -82,7 +89,7 @@ router.post('/:id/add-tracking', requireAuth, async (req, res) => {
        VALUES ($1,$2,$3,$4)`,
       [
         r.rows[0].buyer_id,
-        `คำสั่งซื้อของคุณถูกจัดส่งแล้ว (${shipping_service}) หมายเลขพัสดุ: ${tracking_number}`,
+        `คำสั่งซื้อของคุณถูกจัดส่งแล้วโดย ${shipping_service} หมายเลขพัสดุ : ${tracking_number}`,
         r.rows[0].post_id,
         userId
       ]
@@ -102,11 +109,18 @@ router.post('/:id/confirm-delivery', requireAuth, async (req, res) => {
   const userId = req.user.id;
 
   try {
-    const r = await query(`UPDATE orders
-      SET status='review', updated_at=NOW()
-      WHERE id=$1 AND buyer_id=$2 AND status='shipping'
-      RETURNING id, status, seller_id, post_id`,
-      [orderId, userId]);
+    const r = await query(
+      `UPDATE orders
+       SET status = 'review',
+           delivered_at = NOW(),  
+           updated_at = NOW()
+       WHERE id = $1
+         AND buyer_id = $2
+         AND status = 'shipping'
+       RETURNING id, status, seller_id, post_id`,
+      [orderId, userId]
+    );
+
 
     if (!r.rowCount) return res.status(400).json({ error: 'ไม่พบคำสั่งซื้อหรือสถานะไม่ถูกต้อง' });
 
