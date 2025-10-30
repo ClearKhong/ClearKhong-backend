@@ -12,6 +12,21 @@ const storage=multer.diskStorage({destination:(r,f,cb)=>cb(null,tradeDir),filena
 const upload=multer({storage});
 const textOnly = multer(); 
 
+// ฟังก์ชันช่วยลบไฟล์ใน /uploads/trades/
+function deleteUploadedFiles(files) {
+  if (!files || !Array.isArray(files)) return;
+  for (const f of files) {
+    try {
+      const filePath = path.join(process.cwd(), 'uploads', 'trades', f.filename);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        console.log('🗑️ Deleted file:', filePath);
+      }
+    } catch (err) {
+      console.error('⚠️ Failed to delete file:', f.filename, err);
+    }
+  }
+}
 
 // แสดงข้อเสนอเทรดทั้งหมดของ user (my-trades)
 router.get('/my-trades', requireAuth, async (req, res) => {
@@ -91,8 +106,10 @@ router.post('/:postId/new', requireAuth, upload.any(), async (req,res)=>{
     return res.status(404).json({ error: 'ไม่พบโพสต์' });
   if (post.rows[0].status !== 'approved')
     return res.status(400).json({ error: 'โพสต์นี้ยังไม่พร้อมสำหรับการเทรด' });
-  if (post.rows[0].user_id === req.user.id)
+  if (post.rows[0].user_id === req.user.id){
+    deleteUploadedFiles(req.files);   
     return res.status(400).json({ error: 'ไม่สามารถเสนอการเทรดในโพสต์ของตนเองได้' });
+  }
   if (!post.rows[0].is_trade)
     return res.status(400).json({ error: 'โพสต์นี้ไม่รับการเทรด' });
 
@@ -104,6 +121,7 @@ router.post('/:postId/new', requireAuth, upload.any(), async (req,res)=>{
     [pid, req.user.id]
   );
   if (existingTrade.rowCount) {
+    deleteUploadedFiles(req.files);
     return res.status(400).json({ error: 'คุณได้เสนอการเทรดในโพสต์นี้ไปแล้ว' });
   }
   let items = buildItemsFromBody(req.body);
@@ -146,6 +164,7 @@ router.post('/:postId/new', requireAuth, upload.any(), async (req,res)=>{
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
     if (!it.title || !it.description) {
+      deleteUploadedFiles(req.files); 
       return res
         .status(400)
         .json({ error: `Item index ${i} must have title and description` });
@@ -155,11 +174,13 @@ router.post('/:postId/new', requireAuth, upload.any(), async (req,res)=>{
     }
     const imgs = filesByItem[i] || [];
     if (imgs.length < 4) {
+      deleteUploadedFiles(req.files); 
       return res.status(400).json({
         error: `Each item must have at least 4 images. Item index ${i} has only ${imgs.length}`,
       });
     }
     if (imgs.length > 10) {
+      deleteUploadedFiles(req.files);
       return res.status(400).json({
         error: `Each item can have at most 10 images. Item index ${i} has ${imgs.length}`,
       });

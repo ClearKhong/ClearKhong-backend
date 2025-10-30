@@ -208,6 +208,7 @@ CREATE TABLE IF NOT EXISTS orders (
   address TEXT,
   payment_slip_url  TEXT,
   amount NUMERIC(12,2),
+  shipping_service TEXT,
   tracking_number TEXT,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
