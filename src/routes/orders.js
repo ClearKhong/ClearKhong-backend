@@ -174,7 +174,7 @@ router.get('/my', requireAuth, async (req, res) => {
 });
 
 /**
- * ✅ ดึงรายละเอียด Order ตาม id
+ * ✅ ดึงรายละเอียด Order ตาม id พร้อมชื่อผู้ซื้อ/ผู้ขาย
  */
 router.get('/:id', requireAuth, async (req, res) => {
   const orderId = req.params.id;
@@ -182,18 +182,27 @@ router.get('/:id', requireAuth, async (req, res) => {
 
   try {
     const r = await query(
-      `SELECT o.*, p.title, p.image_url, u.username AS seller_name
+      `SELECT 
+         o.*, 
+         p.title, 
+         p.image_url, 
+         buyer.username AS buyer_name,
+         seller.username AS seller_name
        FROM orders o
-       JOIN posts p ON p.id=o.post_id
-       JOIN users u ON u.id=o.seller_id
-       WHERE o.id=$1 AND (o.buyer_id=$2 OR o.seller_id=$2)`,
+       JOIN posts p ON p.id = o.post_id
+       JOIN users buyer ON buyer.id = o.buyer_id
+       JOIN users seller ON seller.id = o.seller_id
+       WHERE o.id = $1
+         AND (o.buyer_id = $2 OR o.seller_id = $2)`,
       [orderId, userId]
     );
 
-    if (!r.rowCount) return res.status(404).json({ error: 'ไม่พบคำสั่งซื้อ' });
+    if (!r.rowCount)
+      return res.status(404).json({ error: 'ไม่พบคำสั่งซื้อ' });
 
     res.json(r.rows[0]);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'server error' });
   }
 });
