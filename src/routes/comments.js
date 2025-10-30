@@ -4,21 +4,35 @@ import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
-// ดึงคอมเมนต์ทั้งหมดของโพสต์ตาม postId
+// ดึงคอมเมนต์ทั้งหมดของโพสต์ตาม postId พร้อม username และรูปโปรไฟล์ของคนเมนต์
 router.get('/:postId', async (req, res) => {
   const postId = Number(req.params.postId);
   if (!Number.isInteger(postId))
     return res.status(400).json({ error: 'postId ไม่ถูกต้อง' });
 
-  const r = await query(
-    `SELECT c.id, c.post_id, c.user_id, u.username, c.body, c.parent_comment_id, c.created_at
-     FROM comments c
-     JOIN users u ON u.id = c.user_id
-     WHERE c.post_id = $1
-     ORDER BY c.created_at DESC, c.id DESC`,
-    [postId]
-  );
-  res.json(r.rows);
+  try {
+    const r = await query(
+      `SELECT 
+         c.id, 
+         c.post_id, 
+         c.user_id, 
+         u.username, 
+         u.profile_image_url,      
+         c.body, 
+         c.parent_comment_id, 
+         c.created_at
+       FROM comments c
+       JOIN users u ON u.id = c.user_id
+       WHERE c.post_id = $1
+       ORDER BY c.created_at DESC, c.id DESC`,
+      [postId]
+    );
+
+    res.json(r.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'เกิดข้อผิดพลาดในระบบ' });
+  }
 });
 
 // เพิ่มคอมเมนต์ใหม่ในโพสต์
