@@ -1,0 +1,142 @@
+import { Router } from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { query } from '../db.js';
+import { requireAuth } from '../middleware/auth.js';
+const router = Router();
+const avatarDir = path.join(process.cwd(), 'uploads', 'avatars');
+if (!fs.existsSync(avatarDir))
+  fs.mkdirSync(avatarDir, { recursive: true });
+const storage = multer.diskStorage({ destination: (r, f, cb) => cb(null, avatarDir), filename: (r, f, cb) => cb(null, Date.now() + '-' + Math.round(Math.random() * 1e9) + path.extname(f.originalname)) });
+const upload = multer({ storage });
+
+// ดึงโปรไฟล์สาธารณะของผู้ใช้คนอื่น พร้อมโพสต์ล่าสุด (ไม่ต้องล็อกอิน)
+router.get('/public/:id', async (req, res) => {
+  const uid = req.params.id;
+  const u = await query(
+    `SELECT id, username, name, phone, email, fackebook, line, bio, profile_image_url 
+       FROM users WHERE id=$1`,
+    [uid]
+  );
+  if (!u.rowCount)
+    return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
+
+  const posts = await query(
+    `SELECT id, title, status, created_at
+       FROM posts
+      WHERE user_id=$1
+      ORDER BY created_at DESC`,
+    [uid]
+  );
+
+  res.json({ user: u.rows[0], recentPosts: posts.rows });
+});
+
+// ดึงข้อมูลโปรไฟล์ของตัวเอง (ต้องล็อกอิน)
+router.get('/me', requireAuth, async (req, res) => {
+  const r = await query(
+    `SELECT id, username, name, phone, email, fackebook, line, address, bio, profile_image_url, tokens, role 
+       FROM users WHERE id=$1`,
+    [req.user.id]
+  );
+  res.json(r.rows[0]);
+});
+
+// อัปเดตโปรไฟล์ของตัวเอง (ต้องล็อกอิน อัปโหลดรูปได้)
+router.put('/me', requireAuth, upload.single('profileImage'), async (req, res) => {
+  const { name, email, phone, fackebook, line, address,  bio } = req.body;
+
+  const phoneOk = !phone || /^\d{10}$/.test(String(phone));
+  const emailOk = !email || String(email).includes('@');
+  if (!phoneOk)
+    return res.status(400).json({ error: 'เบอร์โทรศัพท์ต้องมี 10 หลัก' });
+  if (!emailOk)
+    return res.status(400).json({ error: 'อีเมลต้องมี @' });
+
+  const img = req.file ? ('/uploads/avatars/' + req.file.filename) : null;
+
+  const r = await query(
+    `UPDATE users 
+        SET name=COALESCE($2, name),
+            phone=COALESCE($3, phone),
+            email=COALESCE($4, email),
+            address=COALESCE($5, address),
+            fackebook=COALESCE($6, fackebook),
+            line=COALESCE($7, line),
+            bio=COALESCE($8, bio),
+            profile_image_url=COALESCE($9, profile_image_url)
+      WHERE id=$1
+      RETURNING id, username, name, phone, email, fackebook, line, address, bio, profile_image_url, tokens, role`,
+    [
+      req.user.id,
+      name || null,
+      phone || null,
+      email || null,
+      address || null,
+      fackebook || null,
+      line || null,
+      bio || null,
+      img
+    ]
+  );
+
+  res.json(r.rows[0]);
+});
+// ดึงประวัติการใช้งานของตัวเอง (โพสต์, ซื้อ, เทรด) (ต้องล็อกอิน)
+router.get('/history', requireAuth, async (req, res) => {
+  // 1) โพสต์ของตัวเอง
+  const myPosts = await query(
+    `SELECT id, title, status, promoted, created_at
+       FROM posts
+      WHERE user_id=$1
+      ORDER BY created_at DESC`,
+    [req.user.id]
+  );
+
+  // 2) การซื้อสินค้า (orders)
+  const myOrders = await query(
+    `SELECT o.id, o.post_id, o.amount, o.status, o.name, o.phone, o.address,
+            o.tracking_number, o.created_at, p.title
+       FROM orders o
+       JOIN posts p ON p.id = o.post_id
+      WHERE o.buyer_id=$1
+      ORDER BY o.created_at DESC`,
+    [req.user.id]
+  );
+
+  // 3) การเสนอเทรด (trades)
+  const myTrades = await query(
+    `SELECT t.id AS trade_id,
+            t.status,
+            t.created_at,
+            json_agg(json_build_object(
+              'post_id', p.id,
+              'post_title', p.title
+            )) AS posts,
+            (
+              SELECT json_agg(json_build_object(
+                'title', ti.title,
+                'description', ti.description,
+                'tags', ti.tags,
+                'images', ti.image_url
+              ))
+              FROM trade_items ti
+              WHERE ti.trade_id = t.id
+            ) AS items
+       FROM trades t
+       JOIN trade_posts tp ON tp.trade_id = t.id
+       JOIN posts p ON p.id = tp.post_id
+      WHERE t.proposer_id=$1
+      GROUP BY t.id
+      ORDER BY t.created_at DESC`,
+    [req.user.id]
+  );
+
+  res.json({
+    myPosts: myPosts.rows,
+    myOrders: myOrders.rows,
+    myTrades: myTrades.rows
+  });
+});
+export default router;

@@ -1,0 +1,1777 @@
+openapi: 3.0.3
+info:
+  title: ClearKhong API
+  version: "1.3.0"
+servers:
+  - url: http://127.0.0.1:4000
+tags:
+  - name: Auth
+    description: Authentication & session
+  - name: Profile
+    description: User profile & public profile
+  - name: Posts
+    description: Create, edit, list marketplace posts
+  - name: Comments
+    description: Post comments
+  - name: Trades
+    description: Trade offers & actions
+  - name: Reports
+    description: User/content reports
+  - name: Admin
+    description: Admin moderation & user management
+  - name: Notifications
+    description: User notifications
+  - name: Tokens
+    description: Top-up / token operations
+  - name: Reviews
+    description: Seller reviews and ratings
+  - name: Favorites
+    description: Toggle favorite posts (add/remove)
+  - name: Orders
+    description: Order management for buying flow
+  - name: Trade Orders
+    description: Flow การเทรด (ยืนยันเทรด, ใส่เลขพัสดุ, ยืนยันรับของ)
+security:
+  - bearerAuth: []
+    cookieAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: token
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+    Comment:
+      type: object
+      properties:
+        id:
+          type: integer
+        post_id:
+          type: integer
+        user_id:
+          type: integer
+        username:
+          type: string
+        body:
+          type: string
+        parent_comment_id:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    AuthRegister:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+        phone:
+          type: string
+          pattern: ^\d{10}$
+        email:
+          type: string
+          format: email
+      example:
+        username: diana
+        password: diana
+        phone: "0912345678"
+        email: diana@gmail.com
+    AuthLogin:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+      example:
+        username: diana
+        password: diana
+    ProfileUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          pattern: ^\d{10}$
+        facebook:
+          type: string
+        line:
+          type: string
+        address:
+          type: string
+        bio:
+          type: string
+        profileImage:
+          type: string
+          format: binary
+      example:
+        phone: 0912345678
+        email: diana@gmail.com
+        address: 99/1 ถนนสุขุมวิท กรุงเทพฯ 10110
+        bio: รับซื้อ-ขาย จ.-ศ. 10:00-18:00
+    PostCreate:
+      type: object
+      required:
+        - title
+        - description
+        - images
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        is_sell:
+          type: boolean
+        is_trade:
+          type: boolean
+        price:
+          type: number
+          format: float
+          nullable: true
+          minimum: 0
+        tags:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        special_tags:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        images:
+          type: array
+          minItems: 4
+          maxItems: 10
+          items:
+            type: string
+            format: binary
+      example:
+        title: iPhone 13 128GB
+        description: สภาพ 95% มีรอยขนแมวเล็กน้อย
+        is_sell: true
+        is_trade: false
+        price: 14500
+        tags: iphone,apple,มือสอง
+    PostUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        is_sell:
+          type: boolean
+        is_trade:
+          type: boolean
+        price:
+          type: number
+          format: float
+          nullable: true
+          minimum: 0
+        tags:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        special_tags:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        images:
+          type: array
+          minItems: 4
+          maxItems: 10
+          items:
+            type: string
+            format: binary
+      example:
+        title: iPhone 13 128GB - ลดราคา
+        price: 13900
+        tags:
+          - iphone
+          - มือสอง
+    CommentCreate:
+      type: object
+      required:
+        - body
+      properties:
+        body:
+          type: string
+      example:
+        body: สนใจครับ นัดรับได้ที่ไหน
+    ReportCreate:
+      type: object
+      required:
+        - target_user_id
+      properties:
+        target_user_id:
+          type: integer
+        reasons:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        details:
+          type: string
+        images:
+          type: array
+          items:
+            type: string
+            format: binary
+      example:
+        target_user_id: 2
+        reasons: spam,scam
+        details: ส่งลิงก์หลอกลวง
+    AdminUserUpdate:
+      type: object
+      properties:
+        phone:
+          type: string
+          pattern: ^\d{10}$
+        email:
+          type: string
+          format: email
+        address:
+          type: string
+        bio:
+          type: string
+      example:
+        phone: 0891234567
+        email: user@example.com
+        address: บางนา, กทม.
+        bio: อัปเดตโดยแอดมิน
+    AdminReportStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - open
+            - reviewing
+            - resolved
+      example:
+        status: reviewing
+    TokensConfirm:
+      type: object
+      properties:
+        amount:
+          type: integer
+          enum:
+            - 5
+            - 10
+            - 20
+            - 50
+            - 100
+            - 500
+      example:
+        amount: 10
+    Post:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+          format: float
+          nullable: true
+          minimum: 0
+        is_sell:
+          type: boolean
+        is_trade:
+          type: boolean
+        tags:
+          type: array
+          items:
+            type: string
+        special_tags:
+          type: array
+          items:
+            type: string
+        image_url:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum:
+            - draft
+            - pending
+            - approved
+            - rejected
+            - closed
+        promoted:
+          type: boolean
+        promoted_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    ReviewCreate:
+      type: object
+      required:
+        - sellerId
+        - rating
+        - comment
+        - orderId
+      properties:
+        sellerId:
+          type: integer
+          example: 12
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: Rating score (1-5)
+          example: 5
+        comment:
+          type: string
+          example: บริการดี ส่งไว คุณภาพตรงปก
+        orderId:
+          type: integer
+          nullable: true
+          description: Order ID (must be in `review` state before review)
+          example: 345
+    FavoriteToggle:
+      type: object
+      required: [post_id]
+      properties:
+        post_id:
+          type: integer
+        # user_id:
+        #   type: integer
+      example:
+        # user_id: 1
+        post_id: 101
+
+    FavoriteItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        post_id:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        post:
+          $ref: "#/components/schemas/Post"
+      example:
+        id: 1
+        user_id: 2
+        post_id: 10
+        created_at: "2025-09-18T10:20:30Z"
+        post:
+          id: 10
+          title: "iPhone 13 128GB"
+          description: "สภาพ 95% มีรอยขนแมวเล็กน้อย"
+          price: 14500
+          is_sell: true
+          is_trade: false
+    OrderCreate:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+          pattern: ^\d{10}$
+        address:
+          type: string
+        payment_slip_url:
+          type: string
+          format: binary
+      required:
+        - payment_slip_url
+      example:
+        name: "อุนจิแมน"
+        phone: "0912345678"
+        address: "เนเวอร์มอ"
+        payment_slip_url: "slip.jpg"
+    Order:
+      type: object
+      properties:
+        id: { type: integer }
+        post_id: { type: integer }
+        buyer_id: { type: integer }
+        seller_id: { type: integer }
+        status:
+          type: string
+          enum: [waiting_confirm, payment_confirmed, shipping, delivered]
+        tracking_number:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TrackingNumber:
+      type: object
+      required: [tracking_number]
+      properties:
+        tracking_number:
+          type: string
+      example:
+        tracking_number: "TH1234567890"
+
+    TradeOrder:
+      type: object
+      properties:
+        id: { type: integer }
+        trade_id: { type: integer }
+        post_id: { type: integer, nullable: true }
+        offered_trade_id: { type: integer, nullable: true }
+        sender_id: { type: integer }
+        receiver_id: { type: integer }
+        status:
+          {
+            type: string,
+            enum: [waiting_shipping, shipping, completed, cancelled],
+          }
+        tracking_number: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    TradeConfirmResponse:
+      type: object
+      properties:
+        ok: { type: boolean, example: true }
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/TradeOrder"
+
+    TradeAddTrackingRequest:
+      type: object
+      required: [tracking_number]
+      properties:
+        tracking_number:
+          type: string
+          example: TH1234567890
+
+    TradeOrderResponse:
+      type: object
+      properties:
+        ok: { type: boolean, example: true }
+        order:
+          $ref: "#/components/schemas/TradeOrder"
+
+paths:
+  /api/auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Register a new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRegister"
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Validation error
+  /api/auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Login with username/password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthLogin"
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Invalid credentials
+  /api/auth/logout:
+    post:
+      tags:
+        - Auth
+      summary: Logout (clear cookie token)
+      responses:
+        "200":
+          description: OK
+  /api/profile/history:
+    get:
+      tags:
+        - Profile
+      summary: My post history
+      responses:
+        "200":
+          description: OK
+  /api/profile/me:
+    get:
+      tags:
+        - Profile
+      summary: Get my profile
+      responses:
+        "200":
+          description: OK
+    put:
+      tags:
+        - Profile
+      summary: Update my profile
+      requestBody:
+        required: false
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ProfileUpdate"
+      responses:
+        "200":
+          description: OK
+  /api/profile/public/{id}:
+    get:
+      tags:
+        - Profile
+      summary: Public profile by ID
+      security: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not found
+  /api/posts:
+    get:
+      tags:
+        - Posts
+      summary: List approved posts
+      security: []
+      responses:
+        "200":
+          description: OK
+    post:
+      tags:
+        - Posts
+      summary: Create a post
+      description: Images are required and must be between 4 and 10 files.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/PostCreate"
+      responses:
+        "200":
+          description: OK
+  /api/posts/{id}:
+    get:
+      tags:
+        - Posts
+      summary: Get post detail
+      security: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+    put:
+      tags:
+        - Posts
+      summary: Edit my post
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      description: Edit a post. If you upload a new set of images to replace existing ones, the upload must contain between 4 and 10 images. Leaving images out will keep the existing images unchanged.
+      requestBody:
+        required: false
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/PostUpdate"
+      responses:
+        "200":
+          description: OK
+    delete:
+      tags:
+        - Posts
+      summary: Delete my post
+      description: "Delete a post by ID. The owner can delete the post even if it's pending/approved/published. Deletion removes the post from the database; related rows with FK ON DELETE CASCADE will be removed automatically."
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+        "403":
+          description: Forbidden (not owner)
+        "404":
+          description: Not found
+  /api/posts/{id}/buy:
+    post:
+      tags:
+        - Posts
+      summary: Buy post (create order)
+      description: >
+        Buyer purchases a post that is **approved**. The order will be created in **waiting_confirm** status.
+        The buyer **cannot** buy their own post. If `address` is not provided, it will be fetched from the user's profile.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/OrderCreate"
+      responses:
+        "200":
+          description: Order created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  order:
+                    $ref: "#/components/schemas/Order"
+        "400":
+          description: Bad request (buy own post / order already exists / post not approved)
+          content:
+            application/json:
+              examples:
+                ownPost:
+                  summary: cannot buy your own post
+                  value:
+                    error: Cannot buy your own post
+                duplicateOrder:
+                  summary: order already exists
+                  value:
+                    error: Order already exists
+                notApproved:
+                  summary: post not approved
+                  value:
+                    error: Cannot buy this post
+        "404":
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Post not found
+  /api/posts/{id}/promote:
+    post:
+      tags:
+        - Posts
+      summary: Promote post
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+  /api/posts/{id}/resubmit:
+    post:
+      tags:
+        - Posts
+      summary: Resubmit rejected post
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+  /api/comments/{postId}:
+    get:
+      tags:
+        - Comments
+      summary: List comments of a post
+      security: []
+      parameters:
+        - in: path
+          name: postId
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+    post:
+      tags:
+        - Comments
+      summary: Add a comment
+      parameters:
+        - in: path
+          name: postId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommentCreate"
+            example:
+              body: good
+              parent_comment_id: null
+      responses:
+        "200":
+          description: OK
+  /api/comments/{commentId}:
+    delete:
+      tags:
+        - Comments
+      summary: Delete a comment
+      description: Delete a comment by ID. Can be deleted by comment owner, post owner, or admin.
+      parameters:
+        - in: path
+          name: commentId
+          required: true
+          schema:
+            type: integer
+          description: ID of the comment to delete
+      responses:
+        "200":
+          description: Comment deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Comment deleted successfully
+        "400":
+          description: Invalid comment ID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: invalid commentId
+        "403":
+          description: Forbidden - only comment owner, post owner, or admin can delete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "forbidden: you can only delete your own comments"
+        "404":
+          description: Comment not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: comment not found
+  /api/trades/my-trades:
+    get:
+      tags:
+        - Trades
+      summary: List my pending trades
+      responses:
+        "200":
+          description: OK
+  /api/trades/{postId}:
+    get:
+      tags:
+        - Trades
+      summary: List trade offers of a post
+      parameters:
+        - in: path
+          name: postId
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+  /api/trades/{postId}/new:
+    post:
+      tags:
+        - Trades
+      summary: Create trade offer
+      description: >
+        Create a trade offer on a post that is **approved** and **accepts trades** (`is_trade=true`).
+        You **cannot** submit an offer to your own post.
+      parameters:
+        - in: path
+          name: postId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                items[0].title:
+                  type: string
+                  example: รองเท้า Nike Air
+                items[0].description:
+                  type: string
+                  example: "สภาพดี ใช้งานน้อย"
+                items[0].tags:
+                  type: array
+                  items:
+                    type: string
+                  example: ["รองเท้า"]
+                items[0].images:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  minItems: 4
+                  description: "อย่างน้อย 4 รูปต่อสินค้า"
+                items[1].title:
+                  type: string
+                  example: เสื้อ Supreme แดง
+                items[1].description:
+                  type: string
+                  example: "ของแท้"
+                items[1].tags:
+                  type: array
+                  items:
+                    type: string
+                  example: ["เสื้อผ้า"]
+                items[1].images:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  minItems: 4
+              required:
+                - items[0].title
+                - items[0].description
+                - items[0].tags
+                - items[0].images
+                - items[1].title
+                - items[1].description
+                - items[1].tags
+                - items[1].images
+      responses:
+        "200":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  id:
+                    type: integer
+                    example: 42
+        "400":
+          description: >
+            Bad request (post not ready for trading / post does not accept trades / cannot offer trade on your own post)
+          content:
+            application/json:
+              examples:
+                notReady:
+                  summary: post not approved
+                  value:
+                    error: The post is not ready for trading yet.
+                noTrade:
+                  summary: post does not accept trades
+                  value:
+                    error: this post does not accept trades
+                selfOffer:
+                  summary: cannot trade on own post
+                  value:
+                    error: cannot offer trade on your own post
+        "404":
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/trades/{postId}/reuse/{tradeId}:
+    post:
+      tags:
+        - Trades
+      summary: Reuse an existing trade offer
+      description: >
+        Reuse a previous pending trade offer and apply it to another post that is
+        **approved** and **accepts trades** (`is_trade=true`).
+        You **cannot** submit an offer to your own post.
+      parameters:
+        - in: path
+          name: postId
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: tradeId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+      responses:
+        "200":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  id:
+                    type: integer
+                    example: 42
+        "400":
+          description: >
+            Bad request (post not ready for trading / post does not accept trades / cannot offer trade on your own post)
+          content:
+            application/json:
+              examples:
+                notReady:
+                  summary: post not approved
+                  value:
+                    error: The post is not ready for trading yet.
+                noTrade:
+                  summary: post does not accept trades
+                  value:
+                    error: this post does not accept trades
+                selfOffer:
+                  summary: cannot trade on own post
+                  value:
+                    error: cannot offer trade on your own post
+        "404":
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/trades/{tradeId}:
+    delete:
+      tags:
+        - Trades
+      summary: Delete a trade completely
+      description: Delete a trade and all its associated post relations. Only the proposer can delete their trade.
+      parameters:
+        - in: path
+          name: tradeId
+          required: true
+          schema:
+            type: integer
+          description: ID of the trade to delete
+      responses:
+        "200":
+          description: Trade deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Trade deleted successfully
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Invalid trade ID
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: You cannot delete this trade
+        "404":
+          description: Trade not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Trade not found
+  /api/trades/{postId}/accept/{offerId}:
+    post:
+      tags:
+        - Trades
+      summary: Accept trade offer
+      description: >
+        Owner ยืนยันเทรด → สร้าง trade orders ที่ส่งให้ผู้โพสต์เทรด
+        Accept a pending trade offer on your own post. The post must still be **approved** and **is_trade=true**.
+        Only the post owner can accept. Offer must be **pending**.
+      parameters:
+        - in: path
+          name: postId
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: offerId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                phone:
+                  type: string
+                  pattern: ^\d{10}$
+                address:
+                  type: string
+              example:
+                name: อุนจิแมน
+                phone: "0912345678"
+                address: เนเวอร์มอ
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+        "400":
+          description: >
+            Bad request (post is not tradable / offer not pending)
+          content:
+            application/json:
+              examples:
+                notTradable:
+                  summary: post not tradable
+                  value:
+                    error: post is not tradable
+                notPending:
+                  summary: offer not pending
+                  value:
+                    error: offer not pending
+        "403":
+          description: Forbidden (not post owner)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found (post or offer)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/reports:
+    post:
+      tags:
+        - Reports
+      summary: Create a report
+      description: "Create a report on a target user. The reporter must be authenticated. The reporter **cannot report themselves**."
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ReportCreate"
+      responses:
+        "200":
+          description: Report created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  id:
+                    type: integer
+                    example: 123
+        "400":
+          description: >
+            Bad request (missing target_user_id or reporter is the same as target)
+          content:
+            application/json:
+              examples:
+                missingTarget:
+                  summary: target_user_id required
+                  value:
+                    error: target_user_id required
+                selfReport:
+                  summary: cannot report yourself
+                  value:
+                    error: cannot report yourself
+  /api/admin/pending:
+    get:
+      tags:
+        - Admin
+      summary: List pending posts
+      responses:
+        "200":
+          description: OK
+  /api/admin/posts:
+    get:
+      tags:
+        - Admin
+      summary: List all posts
+      responses:
+        "200":
+          description: OK
+  /api/admin/posts/{id}/approve:
+    post:
+      tags:
+        - Admin
+      summary: Approve a post
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+  /api/admin/posts/{id}/reject:
+    post:
+      tags:
+        - Admin
+      summary: Reject a post
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+  /api/admin/reports:
+    get:
+      tags:
+        - Admin
+      summary: List reports
+      responses:
+        "200":
+          description: OK
+  /api/admin/reports/{id}:
+    get:
+      tags:
+        - Admin
+      summary: Get report detail
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+  /api/admin/reports/{id}/status:
+    post:
+      tags:
+        - Admin
+      summary: Update report status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminReportStatus"
+      responses:
+        "200":
+          description: OK
+  /api/admin/users:
+    get:
+      tags:
+        - Admin
+      summary: List users
+      responses:
+        "200":
+          description: OK
+  /api/admin/users/{id}:
+    get:
+      tags:
+        - Admin
+      summary: Get user
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+    put:
+      tags:
+        - Admin
+      summary: Update user
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUserUpdate"
+      responses:
+        "200":
+          description: OK
+  /api/admin/users/{id}/activate:
+    post:
+      tags:
+        - Admin
+      summary: Activate user
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+  /api/admin/users/{id}/history:
+    get:
+      tags:
+        - Admin
+      summary: User action history
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+  /api/admin/users/{id}/suspend:
+    post:
+      tags:
+        - Admin
+      summary: Suspend user
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+  /api/notifs:
+    get:
+      tags:
+        - Notifications
+      summary: My notifications
+      responses:
+        "200":
+          description: OK
+  /api/notifs/{id}/read:
+    post:
+      tags:
+        - Notifications
+      summary: Mark notification as read
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+  /api/tokens/confirm:
+    post:
+      tags:
+        - Tokens
+      summary: Buy tokens (confirm)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokensConfirm"
+      responses:
+        "200":
+          description: OK
+  /api/reviews:
+    post:
+      tags:
+        - Reviews
+      summary: make a review
+      description: >
+        Seller-level review: Give rating 1-5 (integer) + comment.  
+        Cannot review yourself. 
+        Requires a valid `orderId` where the order is in `review` state.  
+        After a review is submitted, the order status will change to `completed`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewCreate"
+      responses:
+        "201":
+          description: Created successfully
+        "401":
+          description: Login required
+        "403":
+          description: Cannot review yourself
+        "409":
+          description: Duplicate review for the same seller
+        "400":
+          description: Invalid data
+        "500":
+          description: Server error
+  /api/reviews/users/{sellerId}/reviews:
+    get:
+      tags:
+        - Reviews
+      summary: reviews list
+      parameters:
+        - in: path
+          name: sellerId
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: OK
+  /api/reviews/users/{sellerId}/rating_summary:
+    get:
+      tags:
+        - Reviews
+      summary: rating summary
+      parameters:
+        - in: path
+          name: sellerId
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+  /api/favorite/togglefavorite:
+    post:
+      tags: [Favorites]
+      summary: Toggle favorite for a post
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      description: |
+        - ถ้ายังไม่ได้กด favorite → จะเพิ่มเข้าไป  
+        - ถ้าเคยกด favorite แล้ว → จะลบออก
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FavoriteToggle"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  action:
+                    type: string
+                    enum: [added, removed]
+              example:
+                ok: true
+                action: added
+        "400":
+          description: Bad request (post_id missing)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                example:
+                  error: post_id is required
+
+  /api/favorite/myfavoite:
+    get:
+      tags: [Favorites]
+      summary: Get my favorite posts
+      description: ดึงรายการโพสต์ที่ผู้ใช้ login กด favorite ไว้
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FavoriteItem"
+              example:
+                - id: 1
+                  user_id: 2
+                  post_id: 10
+                  created_at: "2025-09-18T10:20:30Z"
+                  post:
+                    id: 10
+                    title: "iPhone 13 128GB"
+                    description: "สภาพ 95% มีรอยขนแมวเล็กน้อย"
+                    price: 14500
+                    is_sell: true
+                    is_trade: false
+        "401":
+          description: Unauthorized (ต้อง login ก่อน)
+  /api/orders/my:
+    get:
+      tags: [Orders]
+      summary: Get my orders (as buyer or seller)
+      responses:
+        "200":
+          description: My orders list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+
+  /api/orders/{id}:
+    get:
+      tags: [Orders]
+      summary: Get order detail
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Order detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /api/orders/{id}/confirm-payment:
+    post:
+      tags: [Orders]
+      summary: Seller confirm payment received
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Payment confirmed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  order: { $ref: "#/components/schemas/Order" }
+
+  /api/orders/{id}/add-tracking:
+    post:
+      tags: [Orders]
+      summary: Seller add tracking number (start shipping)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrackingNumber"
+      responses:
+        "200":
+          description: Tracking added → status = shipping
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  order: { $ref: "#/components/schemas/Order" }
+
+  /api/orders/{id}/confirm-delivery:
+    post:
+      tags: [Orders]
+      summary: Buyer confirm delivery received
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Order delivered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  order: { $ref: "#/components/schemas/Order" }
+  /api/orders/trade/{tradeId}/confirm:
+    post:
+      summary: Proposer ยืนยันเทรด → สร้าง trade orders ที่ส่งให้ผู้เสนอเทรด
+      tags: [TradeOrders]
+      parameters:
+        - name: tradeId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                phone:
+                  type: string
+                  pattern: ^\d{10}$
+                address:
+                  type: string
+              example:
+                name: อุนจิแมน
+                phone: "0912345678"
+                address: เนเวอร์มอ
+      responses:
+        "200":
+          description: Trade orders created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  orders:
+                    type: object
+                    properties:
+                      proposer_order:
+                        $ref: "#/components/schemas/TradeOrder"
+                      owner_order:
+                        $ref: "#/components/schemas/TradeOrder"
+
+  /api/orders/trade/{id}/trade-add-tracking:
+    post:
+      tags: [Trade Orders]
+      summary: ผู้ส่ง ใส่เลขพัสดุใบเทรดนี้ → status=shipping
+      parameters:
+        - in: path
+          name: id
+          description: id ของ trade orderน้าาา
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TradeAddTrackingRequest"
+      responses:
+        "200":
+          description: Tracking set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeOrderResponse"
+        "400": { description: Invalid state or missing tracking }
+        "403": { description: Forbidden (not sender) }
+        "404": { description: Trade order not found }
+
+  /api/orders/trade/{id}/trade-confirm-delivery:
+    post:
+      tags: [Trade Orders]
+      summary: ผู้รับ กดยืนยันได้รับของ → status=completed
+      parameters:
+        - in: path
+          name: id
+          description: id ของ trade orderน้าาา
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Order completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeOrderResponse"
+        "400": { description: Invalid state }
+        "403": { description: Forbidden (not receiver) }
+        "404": { description: Trade order not found }
+
+  /api/orders/trade/my:
+    get:
+      tags: [Trade Orders]
+      summary: รายการ trade orders ของฉัน (เป็น sender หรือ receiver)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TradeOrder"
+
+  /api/orders/trade/{id}:
+    get:
+      tags: [Trade Orders]
+      summary: รายละเอียด trade order
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeOrder"
+        "404": { description: Not found }
