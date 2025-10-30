@@ -57,6 +57,16 @@ async function insertPostIfNotExists(p) {
   );
 }
 
+async function insertComment(postId, userId, body, parentId = null) {
+  const r = await query(
+    `INSERT INTO comments (post_id, user_id, body, parent_comment_id)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id`,
+    [postId, userId, body, parentId]
+  );
+  return r.rows[0].id;
+}
+
 async function run() {
   const users = [
     { name: 'admin', role: 'admin' },
@@ -209,6 +219,42 @@ async function run() {
       status: 'approved',
       promoted: p.promo
     });
+  }
+
+      // === Seed Comments ===
+  const postRows = await query(`SELECT id, user_id FROM posts`);
+  const allPosts = postRows.rows;
+
+  const sampleComments = [
+    "ของยังมีมั้ยครับ?",
+    "ส่งของยังไงครับ?",
+    "ขอรูปเพิ่มได้มั้ยคะ",
+    "ของแท้มั้ยครับ",
+    "ขอสภาพเพิ่มเติมหน่อยค่ะ",
+    "รับเทรดไหมครับ?",
+    "ของน่ารักมากเลย 😍",
+    "ลดได้อีกมั้ยคะ?",
+    "สนใจครับ เดี๋ยวโอนเลย",
+    "ขอดูด้านในหน่อยค่ะ"
+  ];
+
+  for (const post of allPosts) {
+    // เพิ่มคอมเมนต์หลัก 3-5 อันต่อโพสต์
+    const numMain = Math.floor(Math.random() * 3) + 3;
+    for (let i = 0; i < numMain; i++) {
+      const userKeys = Object.keys(ids);
+      const commenter = userKeys[Math.floor(Math.random() * userKeys.length)];
+      const commentBody = sampleComments[Math.floor(Math.random() * sampleComments.length)];
+      const commentId = await insertComment(post.id, ids[commenter], commentBody, null);
+
+      // เพิ่ม reply ให้แต่ละคอมเมนต์หลัก 1–3 อัน
+      const numReplies = Math.floor(Math.random() * 3);
+      for (let j = 0; j < numReplies; j++) {
+        const replier = userKeys[Math.floor(Math.random() * userKeys.length)];
+        const replyBody = sampleComments[Math.floor(Math.random() * sampleComments.length)];
+        await insertComment(post.id, ids[replier], replyBody, commentId);
+      }
+    }
   }
 
   console.log('✅ Seeded database');
