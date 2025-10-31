@@ -203,7 +203,7 @@ router.get('/trade/my', requireAuth, async (req, res) => {
 
 
 /**
- * GET /api/orders/trade/:id
+ * GET /api/orders/trade/:id เพิ่ม username
  * รายละเอียดใบ trade order
  */
 router.get('/trade/:id', requireAuth, async (req, res) => {
@@ -212,29 +212,74 @@ router.get('/trade/:id', requireAuth, async (req, res) => {
 
   try {
     const r = await query(
-      `SELECT o.id AS order_id,o.trade_id,o.sender_id,o.receiver_id,o.status,o.created_at,
-        su.username AS sender_name,ru.username AS receiver_name,
+      `
+      SELECT 
+        o.id AS order_id,
+        o.trade_id,
+        o.sender_id,
+        su.username AS sender_username,
+        o.receiver_id,
+        ru.username AS receiver_username,
+        o.status,
+        o.created_at,
+        o.tracking_number,
+        o.name,
+        o.phone,
+        o.address,
         COALESCE(
-          (SELECT json_agg(json_build_object('post_id',tp.post_id,'post_title',p.title))
-           FROM trade_posts tp JOIN posts p ON p.id=tp.post_id WHERE tp.trade_id=o.trade_id),
+          (SELECT json_agg(json_build_object(
+              'post_id', tp.post_id,
+              'post_title', p.title
+            ))
+           FROM trade_posts tp 
+           JOIN posts p ON p.id = tp.post_id 
+           WHERE tp.trade_id = o.trade_id),
           '[]'::json
         ) AS posts,
         COALESCE(
-          (SELECT json_agg(json_build_object('title',ti.title,'description',ti.description,'tags',ti.tags,'images',COALESCE(NULLIF(ti.image_url,'')::json,'[]'::json)))
-           FROM trade_items ti WHERE ti.trade_id=o.trade_id),
+          (SELECT json_agg(json_build_object(
+              'title', ti.title,
+              'description', ti.description,
+              'tags', ti.tags,
+              'images', COALESCE(NULLIF(ti.image_url,'')::json,'[]'::json)
+            ))
+           FROM trade_items ti 
+           WHERE ti.trade_id = o.trade_id),
           '[]'::json
         ) AS items
-       FROM trade_orders o
-       JOIN users su ON su.id=o.sender_id
-       JOIN users ru ON ru.id=o.receiver_id
-       WHERE o.id=$1 AND (o.sender_id=$2 OR o.receiver_id=$2)`,
+      FROM trade_orders o
+      JOIN users su ON su.id = o.sender_id
+      JOIN users ru ON ru.id = o.receiver_id
+      WHERE o.id = $1 AND (o.sender_id = $2 OR o.receiver_id = $2)
+      `,
       [orderId, userId]
     );
 
-    if (!r.rowCount) return res.status(404).json({ error: 'Order not found' });
+    if (!r.rowCount) return res.status(404).json({ error: 'ไม่พบใบสั่งเทรดนี้' });
 
     const row = r.rows[0];
-    res.json({ order_id: row.order_id, trade_id: row.trade_id, status: row.status, created_at: row.created_at, sender_name: row.sender_name, receiver_name: row.receiver_name, posts: row.posts ?? [], items: row.items ?? [] });
+    res.json({
+      order_id: row.order_id,
+      trade_id: row.trade_id,
+      status: row.status,
+      created_at: row.created_at,
+      tracking_number: row.tracking_number,
+      sender: {
+        id: row.sender_id,
+        username: row.sender_username,
+      },
+      receiver: {
+        id: row.receiver_id,
+        username: row.receiver_username,
+      },
+      shipping: {
+        name: row.name,
+        phone: row.phone,
+        address: row.address,
+      },
+      posts: row.posts ?? [],
+      items: row.items ?? [],
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'server error' });

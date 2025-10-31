@@ -252,8 +252,6 @@ router.put('/:id', requireAuth, multerArray('images', 10), async (req,res)=>{
     return res.status(400).json({ error: 'โพสต์กำลังรอการอนุมัติ; ไม่สามารถแก้ไขได้' });
   if (owner.rows[0].status === 'pending')
     return res.status(400).json({ error: 'โพสต์กำลังรอการอนุมัติ; ไม่สามารถแก้ไขได้' });
-  if (owner.rows[0].status === 'approved')
-    return res.status(400).json({ error: 'โพสต์นี้ได้รับการเผยแพร่แล้ว' });
 
   const { title, description } = req.body;
   const isSell = (typeof req.body.is_sell !== 'undefined') ? ['true','on','1','yes'].includes(String(req.body.is_sell).toLowerCase()) : null;
@@ -297,8 +295,11 @@ router.put('/:id', requireAuth, multerArray('images', 10), async (req,res)=>{
     push('special_tags', special_tags);
   if (images)
     push('image_url', JSON.stringify(images));
-  //แก้เสร็จ->pending
-  push('status', 'pending');
+
+  //ถ้าโพสต์เดิมเป็น approved ให้คงสถานะ approved ไว้
+  const newStatus = (owner.rows[0].status === 'approved') ? 'approved' : 'pending';
+  push('status', newStatus);  
+
   if (!sets.length)
     return res.status(400).json({ error: 'ไม่มีการเปลี่ยนแปลง' });
   const r = await query(`UPDATE posts SET ${sets.join(', ')} WHERE id=$1 RETURNING *`, ps);
