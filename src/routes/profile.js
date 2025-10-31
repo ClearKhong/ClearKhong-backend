@@ -83,60 +83,109 @@ router.put('/me', requireAuth, upload.single('profileImage'), async (req, res) =
 
   res.json(r.rows[0]);
 });
+
+// ดึงประวัติการใช้งานของตัวเอง (โพสต์, ซื้อ, เทรด) (ต้องล็อกอิน)
 // ดึงประวัติการใช้งานของตัวเอง (โพสต์, ซื้อ, เทรด) (ต้องล็อกอิน)
 router.get('/history', requireAuth, async (req, res) => {
+  const userId = req.user.id;
+
   // 1) โพสต์ของตัวเอง
   const myPosts = await query(
-    `SELECT id, title, status, promoted, created_at
-       FROM posts
-      WHERE user_id=$1
-      ORDER BY created_at DESC`,
-    [req.user.id]
-  );
+  `
+  SELECT 
+    p.id,
+    p.title,
+    p.status,
+    p.promoted,
+    p.created_at,
+    p.price,
+    p.is_sell,
+    p.is_trade,
+    CASE 
+      WHEN p.image_url IS NULL OR p.image_url = '' THEN NULL
 
-  // 2) การซื้อสินค้า (orders)
+      -- กรณีเก็บเป็น JSON array
+      WHEN LEFT(p.image_url, 1) = '['
+        THEN (p.image_url::jsonb ->> 0)
+
+      -- กรณีเก็บเป็น string เดี่ยว เช่น '/uploads/posts/...'
+      ELSE p.image_url
+    END AS cover_image
+  FROM posts p
+  WHERE p.user_id = $1
+  ORDER BY p.created_at DESC
+  `,
+  [userId]
+);
+
+
+  // 2) การซื้อสินค้า (orders) — แถมรูปให้ด้วยเลย เผื่อคุณไปใช้หน้าอื่น
   const myOrders = await query(
-    `SELECT o.id, o.post_id, o.amount, o.status, o.name, o.phone, o.address,
-            o.tracking_number, o.created_at, p.title
-       FROM orders o
-       JOIN posts p ON p.id = o.post_id
-      WHERE o.buyer_id=$1
-      ORDER BY o.created_at DESC`,
-    [req.user.id]
+    `
+    SELECT 
+      o.id,
+      o.post_id,
+      o.amount,
+      o.status,
+      o.name,
+      o.phone,
+      o.address,
+      o.tracking_number,
+      o.created_at,
+      p.title,
+      p.is_sell,
+      p.is_trade,
+      p.price AS post_price,
+      CASE 
+        WHEN p.image_url IS NULL THEN NULL
+        WHEN jsonb_typeof(p.image_url::jsonb) = 'array'
+          THEN (p.image_url::jsonb ->> 0)
+        ELSE NULL
+      END AS cover_image
+    FROM orders o
+    JOIN posts p ON p.id = o.post_id
+    WHERE o.buyer_id = $1
+    ORDER BY o.created_at DESC
+    `,
+    [userId]
   );
 
-  // 3) การเสนอเทรด (trades)
+  // 3) การเสนอเทรด (trades) ของเดิมคุณมีอยู่แล้ว ผมแค่ย้าย userId เข้าไปใช้เฉยๆ
   const myTrades = await query(
-    `SELECT t.id AS trade_id,
-            t.status,
-            t.created_at,
-            json_agg(json_build_object(
-              'post_id', p.id,
-              'post_title', p.title
-            )) AS posts,
-            (
-              SELECT json_agg(json_build_object(
-                'title', ti.title,
-                'description', ti.description,
-                'tags', ti.tags,
-                'images', ti.image_url
-              ))
-              FROM trade_items ti
-              WHERE ti.trade_id = t.id
-            ) AS items
-       FROM trades t
-       JOIN trade_posts tp ON tp.trade_id = t.id
-       JOIN posts p ON p.id = tp.post_id
-      WHERE t.proposer_id=$1
-      GROUP BY t.id
-      ORDER BY t.created_at DESC`,
-    [req.user.id]
+    `
+    SELECT 
+      t.id AS trade_id,
+      t.status,
+      t.created_at,
+      json_agg(json_build_object(
+        'post_id', p.id,
+        'post_title', p.title
+      )) AS posts,
+      (
+        SELECT json_agg(json_build_object(
+          'title', ti.title,
+          'description', ti.description,
+          'tags', ti.tags,
+          'images', ti.image_url
+        ))
+        FROM trade_items ti
+        WHERE ti.trade_id = t.id
+      ) AS items
+    FROM trades t
+    JOIN trade_posts tp ON tp.trade_id = t.id
+    JOIN posts p ON p.id = tp.post_id
+    WHERE t.proposer_id = $1
+    GROUP BY t.id
+    ORDER BY t.created_at DESC
+    `,
+    [userId]
   );
 
   res.json({
     myPosts: myPosts.rows,
     myOrders: myOrders.rows,
-    myTrades: myTrades.rows
+    myTrades: myTrades.rows,
   });
 });
+
 export default router;
