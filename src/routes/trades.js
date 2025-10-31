@@ -40,10 +40,10 @@ router.get('/my-trades', requireAuth, async (req, res) => {
             )) AS items
      FROM trades t
      LEFT JOIN trade_items ti ON ti.trade_id = t.id
-     WHERE t.proposer_id=$1 AND t.status=$2
+     WHERE t.proposer_id=$1
      GROUP BY t.id, t.status
      ORDER BY t.id DESC`,
-    [req.user.id, 'pending']
+    [req.user.id]   
   );
 
   if (!tradesRes.rowCount) {
@@ -69,6 +69,7 @@ router.get('/my-trades', requireAuth, async (req, res) => {
 
   res.json({ trades });
 });
+
 
 
 function buildItemsFromBody(body) {
