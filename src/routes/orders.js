@@ -7,6 +7,7 @@ const router = Router();
 /**
  * ✅ Buyer กดซื้อ → สร้าง Order
  * state เริ่มต้น: waiting_payment อยู่ในหน้าโพสต์
+ */
 
 /**
  * ✅ Seller กดยืนยันเงินเข้า
@@ -20,9 +21,13 @@ router.post('/:id/confirm-payment', requireAuth, async (req, res) => {
     // ต้องเป็น seller เท่านั้น และต้องอยู่ในสถานะ waiting_confirm
     const r = await query(
       `UPDATE orders
-       SET status='payment_confirmed', updated_at=NOW()
-       WHERE id=$1 AND seller_id=$2 AND status='waiting_confirm'
-       RETURNING id, status, buyer_id, post_id`,  
+       SET status = 'payment_confirmed',
+           confirmed_at = NOW(),   
+           updated_at = NOW()
+       WHERE id = $1
+         AND seller_id = $2
+         AND status = 'waiting_confirm'
+       RETURNING id, status, buyer_id, post_id`,
       [orderId, userId]
     );
 
@@ -44,9 +49,10 @@ router.post('/:id/confirm-payment', requireAuth, async (req, res) => {
 
     res.json({ ok: true, order: r.rows[0] });
   } catch (err) {
-    console.error(err);
+    console.error("❌ SQL Error:", err.message);
     res.status(500).json({ error: 'server error' });
   }
+  
 });
 
 /**
@@ -55,17 +61,25 @@ router.post('/:id/confirm-payment', requireAuth, async (req, res) => {
  */
 router.post('/:id/add-tracking', requireAuth, async (req, res) => {
   const orderId = req.params.id;
-  const { tracking_number } = req.body;
-  const userId = req.user.id;
+  const { tracking_number, shipping_service } = req.body;  const userId = req.user.id;
 
   if (!tracking_number) return res.status(400).json({ error: 'ต้องระบุ tracking_number' });
+  if (!shipping_service) return res.status(400).json({ error: 'ต้องระบุ shipping_service' });
 
   try {
-    const r = await query(`UPDATE orders
-      SET tracking_number=$1, status='shipping', updated_at=NOW()
-      WHERE id=$2 AND seller_id=$3 AND status='payment_confirmed'
-      RETURNING id, status, tracking_number, buyer_id, post_id`,
-      [tracking_number, orderId, userId]);
+    const r = await query(
+      `UPDATE orders
+       SET tracking_number = $1,
+           shipping_service = $2,
+           status = 'shipping',
+           shipped_at = NOW(),    
+           updated_at = NOW()
+       WHERE id = $3
+         AND seller_id = $4
+         AND status = 'payment_confirmed'
+       RETURNING id, status, tracking_number, shipping_service, buyer_id, post_id`,
+      [tracking_number, shipping_service, orderId, userId]
+    );
 
     if (!r.rowCount) return res.status(400).json({ error: 'ไม่พบคำสั่งซื้อหรือสถานะไม่ถูกต้อง' });
 
@@ -75,7 +89,7 @@ router.post('/:id/add-tracking', requireAuth, async (req, res) => {
        VALUES ($1,$2,$3,$4)`,
       [
         r.rows[0].buyer_id,
-        `การสั่งซื้อของคุณได้ถูกจัดส่งแล้ว tracking number: ${tracking_number}`,
+        `คำสั่งซื้อของคุณถูกจัดส่งแล้วโดย ${shipping_service} หมายเลขพัสดุ : ${tracking_number}`,
         r.rows[0].post_id,
         userId
       ]
@@ -95,11 +109,18 @@ router.post('/:id/confirm-delivery', requireAuth, async (req, res) => {
   const userId = req.user.id;
 
   try {
-    const r = await query(`UPDATE orders
-      SET status='review', updated_at=NOW()
-      WHERE id=$1 AND buyer_id=$2 AND status='shipping'
-      RETURNING id, status, seller_id, post_id`,
-      [orderId, userId]);
+    const r = await query(
+      `UPDATE orders
+       SET status = 'review',
+           delivered_at = NOW(),  
+           updated_at = NOW()
+       WHERE id = $1
+         AND buyer_id = $2
+         AND status = 'shipping'
+       RETURNING id, status, seller_id, post_id`,
+      [orderId, userId]
+    );
+
 
     if (!r.rowCount) return res.status(400).json({ error: 'ไม่พบคำสั่งซื้อหรือสถานะไม่ถูกต้อง' });
 
@@ -116,6 +137,30 @@ router.post('/:id/confirm-delivery', requireAuth, async (req, res) => {
     );
     res.json({ ok: true, order: r.rows[0] });
   } catch (err) {
+    res.status(500).json({ error: 'server error' });
+  }
+});
+
+/**
+ * ✅ ดึงเฉพาะออเดอร์ที่เราเป็นผู้ขาย
+ */
+router.get('/my-sell', requireAuth, async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    const r = await query(
+      `SELECT o.*, p.title, p.image_url, u.username AS buyer_name
+       FROM orders o
+       JOIN posts p ON p.id = o.post_id
+       JOIN users u ON u.id = o.buyer_id
+       WHERE o.seller_id = $1
+       ORDER BY o.created_at DESC`,
+      [userId]
+    );
+
+    res.json(r.rows);
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'server error' });
   }
 });
@@ -143,7 +188,7 @@ router.get('/my', requireAuth, async (req, res) => {
 });
 
 /**
- * ✅ ดึงรายละเอียด Order ตาม id
+ * ✅ ดึงรายละเอียด Order ตาม id พร้อมชื่อผู้ซื้อ/ผู้ขาย
  */
 router.get('/:id', requireAuth, async (req, res) => {
   const orderId = req.params.id;
@@ -151,18 +196,27 @@ router.get('/:id', requireAuth, async (req, res) => {
 
   try {
     const r = await query(
-      `SELECT o.*, p.title, p.image_url, u.username AS seller_name
+      `SELECT 
+         o.*, 
+         p.title, 
+         p.image_url, 
+         buyer.username AS buyer_name,
+         seller.username AS seller_name
        FROM orders o
-       JOIN posts p ON p.id=o.post_id
-       JOIN users u ON u.id=o.seller_id
-       WHERE o.id=$1 AND (o.buyer_id=$2 OR o.seller_id=$2)`,
+       JOIN posts p ON p.id = o.post_id
+       JOIN users buyer ON buyer.id = o.buyer_id
+       JOIN users seller ON seller.id = o.seller_id
+       WHERE o.id = $1
+         AND (o.buyer_id = $2 OR o.seller_id = $2)`,
       [orderId, userId]
     );
 
-    if (!r.rowCount) return res.status(404).json({ error: 'ไม่พบคำสั่งซื้อ' });
+    if (!r.rowCount)
+      return res.status(404).json({ error: 'ไม่พบคำสั่งซื้อ' });
 
     res.json(r.rows[0]);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'server error' });
   }
 });

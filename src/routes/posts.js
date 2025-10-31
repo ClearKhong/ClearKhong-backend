@@ -38,35 +38,64 @@ const slipStorage = multer.diskStorage({
 
 const uploadSlip = multer({ storage: slipStorage });
 
-// ดึงโพสต์ทั้งหมด (ค้นหา/กรองได้)
+// ดึงโพสต์ทั้งหมด (ค้นหา/กรองได้ + แสดงผลตามตัวอักษร (1. ขึ้นต้น 2. มีในชื่อ 3. มีในแท็ก))
 router.get('/', async (req, res) => {
   const { q, tag } = req.query;
   let sql = `
     SELECT p.*, 
-       u.username AS seller_username, 
-       u.profile_image_url AS seller_profile_image_url, 
-       COALESCE(ROUND(AVG(sr.rating)::numeric, 1), 0) AS seller_rating,
-       COALESCE(COUNT(sr.rating), 0) AS review_count
-    FROM posts p 
-    JOIN users u ON u.id = p.user_id 
+      u.username AS seller_username, 
+      u.profile_image_url AS seller_profile_image_url, 
+      COALESCE(ROUND(AVG(sr.rating)::numeric, 1), 0) AS seller_rating,
+      COALESCE(COUNT(sr.rating), 0) AS review_count,
+      CASE 
+        -- 3 ระดับความสำคัญ
+        WHEN LOWER(p.title) LIKE LOWER($1 || '%') THEN 3            -- ขึ้นต้นด้วยคำค้น
+        WHEN LOWER(p.title) LIKE LOWER('%' || $1 || '%') THEN 2     -- มีในชื่อ
+        WHEN EXISTS (
+          SELECT 1 FROM unnest(p.tags) AS t WHERE LOWER(t) LIKE LOWER('%' || $1 || '%')
+        ) THEN 1                                                    -- มีในแท็ก
+        ELSE 0
+      END AS relevance
+    FROM posts p
+    JOIN users u ON u.id = p.user_id
     LEFT JOIN seller_reviews sr ON sr.seller_id = p.user_id
-    WHERE status='approved'
+    WHERE p.status = 'approved'
   `;
-  const ps = [];
-  if (q) {
-    ps.push('%' + q + '%'); 
-    sql += ` AND LOWER(p.title) LIKE LOWER($${ps.length})`;
-  }
+
+  const ps = [q || ''];
+
+  // ถ้ามี tag filter แยกต่างหาก
   if (tag) {
-    ps.push(tag);
-    sql += ` AND $${ps.length} = ANY(p.tags)`;
+    ps.push(tag.toLowerCase());
+    sql += `
+      AND EXISTS (
+        SELECT 1 FROM unnest(p.tags) AS t 
+        WHERE LOWER(t) = $${ps.length}
+      )
+    `;
   }
-  sql += ` 
-    GROUP BY p.id, u.username, u.profile_image_url  
-    ORDER BY (p.promoted_at IS NOT NULL) DESC, p.promoted_at DESC NULLS LAST, p.created_at DESC
+
+  // เงื่อนไขค้นหาหลัก
+  sql += `
+    AND (
+      $1 = ''
+      OR LOWER(p.title) LIKE LOWER('%' || $1 || '%')
+      OR EXISTS (
+        SELECT 1 FROM unnest(p.tags) AS t 
+        WHERE LOWER(t) LIKE LOWER('%' || $1 || '%')
+      )
+    )
+    GROUP BY p.id, u.username, u.profile_image_url
+    ORDER BY relevance DESC, p.promoted_at DESC NULLS LAST, p.created_at DESC
   `;
-  const r = await query(sql, ps); 
-  res.json(r.rows); 
+
+  try {
+    const r = await query(sql, ps);
+    res.json(r.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 // ดึงรายละเอียดโพสต์ตาม id
