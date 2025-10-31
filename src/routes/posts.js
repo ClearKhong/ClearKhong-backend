@@ -131,9 +131,11 @@ router.post('/:id/buy', requireAuth, uploadSlip.single('payment_slip_url'), asyn
   const buyer_id = req.user.id;
   let { name, phone, address } = req.body; 
 
-  if (!post_id) return res.status(400).json({ error: 'ต้องระบุ postId' });
+  if (!post_id)
+    return res.status(400).json({ error: 'ต้องระบุ postId' });
 
-  if (!req.file) return res.status(400).json({ error: 'ต้องแนบสลิปการชำระเงิน (1 ไฟล์)' });
+  if (!req.file)
+    return res.status(400).json({ error: 'ต้องแนบสลิปการชำระเงิน (1 ไฟล์)' });
 
   const uploadPath = '/uploads/slips/' + req.file.filename; 
 
@@ -151,13 +153,16 @@ router.post('/:id/buy', requireAuth, uploadSlip.single('payment_slip_url'), asyn
   }
 }
   const postRes = await query('SELECT user_id, price, status FROM posts WHERE id=$1', [post_id]);
-  if (!postRes.rowCount) return res.status(404).json({ error: 'ไม่พบโพสต์' });
+  if (!postRes.rowCount)
+    return res.status(404).json({ error: 'ไม่พบโพสต์' });
 
   const seller_id = postRes.rows[0].user_id;
   const amount = postRes.rows[0].price || 0;
 
-  if (seller_id === buyer_id) return res.status(400).json({ error: 'ไม่สามารถซื้อโพสต์ของตัวเองได้' });
-  if (postRes.rows[0].status !== 'approved') return res.status(400).json({ error: 'ไม่สามารถซื้อโพสต์นี้ได้' });
+  if (seller_id === buyer_id)
+    return res.status(400).json({ error: 'ไม่สามารถซื้อโพสต์ของตัวเองได้' });
+  if (postRes.rows[0].status !== 'approved')
+    return res.status(400).json({ error: 'ไม่สามารถซื้อโพสต์นี้ได้' });
 
   // ตรวจสอบ order ซ้ำ
   const existing = await query('SELECT 1 FROM orders WHERE post_id=$1 AND buyer_id=$2', [post_id, buyer_id]);
@@ -223,8 +228,7 @@ router.put('/:id', requireAuth, multerArray('images', 10), async (req,res)=>{
     return res.status(400).json({ error: 'โพสต์กำลังรอการอนุมัติ; ไม่สามารถแก้ไขได้' });
   if (owner.rows[0].status === 'pending')
     return res.status(400).json({ error: 'โพสต์กำลังรอการอนุมัติ; ไม่สามารถแก้ไขได้' });
-  if (owner.rows[0].status === 'approved')
-    return res.status(400).json({ error: 'โพสต์นี้ได้รับการเผยแพร่แล้ว' });
+  // อนุญาตให้แก้ไขโพสต์ที่ approved แล้ว
 
   const { title, description } = req.body;
   const isSell = (typeof req.body.is_sell !== 'undefined') ? ['true','on','1','yes'].includes(String(req.body.is_sell).toLowerCase()) : null;
@@ -268,8 +272,11 @@ router.put('/:id', requireAuth, multerArray('images', 10), async (req,res)=>{
     push('special_tags', special_tags);
   if (images)
     push('image_url', JSON.stringify(images));
-  //แก้เสร็จ->pending
-  push('status', 'pending');
+  
+  // ถ้าโพสต์เดิมเป็น approved ให้คงสถานะเดิม
+  const newStatus = owner.rows[0].status === 'approved' ? 'approved' : 'pending';
+  push('status', newStatus);
+  
   if (!sets.length)
     return res.status(400).json({ error: 'ไม่มีการเปลี่ยนแปลง' });
   const r = await query(`UPDATE posts SET ${sets.join(', ')} WHERE id=$1 RETURNING *`, ps);
