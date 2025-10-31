@@ -211,7 +211,10 @@ CREATE TABLE IF NOT EXISTS orders (
   shipping_service TEXT,
   tracking_number TEXT,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  confirmed_at TIMESTAMP,
+  shipped_at TIMESTAMP,
+  delivered_at TIMESTAMP 
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_orders_post_buyer
