@@ -173,19 +173,28 @@ router.get('/my', requireAuth, async (req, res) => {
 
   try {
     const r = await query(
-      `SELECT o.*, p.title, p.image_url
+      `SELECT 
+         o.*,
+         p.title,
+         p.image_url,
+         buyer.username  AS buyer_name,
+         seller.username AS seller_name
        FROM orders o
-       JOIN posts p ON p.id=o.post_id
-       WHERE o.buyer_id=$1 OR o.seller_id=$1
+       JOIN posts p ON p.id = o.post_id
+       JOIN users buyer  ON buyer.id  = o.buyer_id
+       JOIN users seller ON seller.id = o.seller_id
+       WHERE o.buyer_id = $1 OR o.seller_id = $1
        ORDER BY o.created_at DESC`,
       [userId]
     );
 
     res.json(r.rows);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'server error' });
   }
 });
+
 
 /**
  * ✅ ดึงรายละเอียด Order ตาม id พร้อมชื่อผู้ซื้อ/ผู้ขาย
