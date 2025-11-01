@@ -290,6 +290,15 @@ CREATE TABLE IF NOT EXISTS trade_orders (
   CONSTRAINT uniq_trade_order UNIQUE (trade_id, sender_id, receiver_id)
 );
 
+-- เพิ่มคอลัมน์ timestamp สำหรับเก็บไทม์ไลน์ของการเทรด
+ALTER TABLE trade_orders
+  ADD COLUMN IF NOT EXISTS partner_confirmed_at TIMESTAMP,    -- วันที่คู่เทรดยืนยันการเทรด
+  ADD COLUMN IF NOT EXISTS shipped_at TIMESTAMP,              -- วันที่คุณแจ้งเลขพัสดุ
+  ADD COLUMN IF NOT EXISTS partner_shipped_at TIMESTAMP,      -- วันที่คู่เทรดแจ้งเลขพัสดุ
+  ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP,            -- วันที่คุณได้รับพัสดุ
+  ADD COLUMN IF NOT EXISTS partner_delivered_at TIMESTAMP;    -- วันที่คู่เทรดได้รับพัสดุ
+
+
 CREATE INDEX IF NOT EXISTS idx_trade_orders_sender    ON trade_orders(sender_id);
 CREATE INDEX IF NOT EXISTS idx_trade_orders_receiver  ON trade_orders(receiver_id);
 CREATE INDEX IF NOT EXISTS idx_trade_orders_trade     ON trade_orders(trade_id);

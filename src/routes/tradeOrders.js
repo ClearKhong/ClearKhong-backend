@@ -4,11 +4,74 @@ import { requireAuth } from '../middleware/auth.js';
 import multer from 'multer';
 const textOnly = multer(); 
 const router = Router();
+/**
+ * GET /api/orders/trade/by-post/:postId
+ * หา trade_order จาก post_id (สำหรับกรณีที่ owner เลือกข้อเสนอแล้ว)
+ */
+router.get('/trade/by-post/:postId', requireAuth, async (req, res) => {
+  const postId = Number(req.params.postId);
+  const userId = req.user.id;
+
+  console.log(`🔍 GET /trade/by-post/${postId} - userId=${userId}`);
+
+  try {
+    // หา trade_order ที่เกี่ยวข้องกับ post_id นี้
+    const r = await query(
+      `
+      SELECT 
+        o.id AS order_id,
+        o.trade_id,
+        o.sender_id,
+        o.receiver_id,
+        o.status,
+        o.created_at,
+        o.tracking_number,
+        o.name,
+        o.phone,
+        o.address
+      FROM trade_orders o
+      WHERE o.post_id = $1 
+        AND (o.sender_id = $2 OR o.receiver_id = $2)
+      ORDER BY o.created_at DESC
+      LIMIT 1
+      `,
+      [postId, userId]
+    );
+
+    if (!r.rowCount) {
+      console.log(` No trade_order found for post_id=${postId}, user_id=${userId}`);
+      return res.status(404).json({ error: 'ไม่พบคำสั่งเทรดสำหรับโพสต์นี้' });
+    }
+
+    const order = r.rows[0];
+    console.log(`Found trade_order: order_id=${order.order_id}, trade_id=${order.trade_id}`);
+
+    res.json({
+      order_id: order.order_id,
+      trade_id: order.trade_id,
+      status: order.status,
+      created_at: order.created_at,
+      tracking_number: order.tracking_number,
+      sender_id: order.sender_id,
+      receiver_id: order.receiver_id,
+      shipping: {
+        name: order.name,
+        phone: order.phone,
+        address: order.address,
+      }
+    });
+  } catch (err) {
+    console.error('Error in GET /trade/by-post/:postId:', err);
+    res.status(500).json({ error: 'server error', details: err.message });
+  }
+});
 
 // Proposer confirm trade → close post + create ONE order (owner -> proposer)
 router.post('/trade/:tradeId/confirm', requireAuth, textOnly.none(), async (req, res) => {
   const tradeId = Number(req.params.tradeId);
   const userId = req.user.id;
+
+  console.log(`POST /trade/${tradeId}/confirm - userId=${userId}`);
 
   try {
     const t = await query('SELECT id, proposer_id, status FROM trades WHERE id=$1', [tradeId]);
@@ -78,6 +141,12 @@ router.post('/trade/:tradeId/confirm', requireAuth, textOnly.none(), async (req,
     }
 
     await query(`UPDATE trades SET status='confirmed' WHERE id=$1 AND status='accepted_waiting_confirm'`, [tradeId]);
+    await query(
+      `UPDATE trade_orders 
+       SET partner_confirmed_at = NOW(), updated_at = NOW()
+       WHERE trade_id = $1`,
+      [tradeId]
+    );
 
     await query(
       `INSERT INTO notifications (user_id, message, post_id, actor_id)
@@ -87,9 +156,10 @@ router.post('/trade/:tradeId/confirm', requireAuth, textOnly.none(), async (req,
 
     await query('COMMIT');
 
+    console.log(`Trade confirmed: ownerOrderId=${ownerOrderId}`);
     res.json({ ok: true, message: 'Trade confirmed. Owner-to-proposer shipment created.', ownerOrderId });
   } catch (e) {
-    console.error(e);
+    console.error('Error in /trade/:tradeId/confirm:', e);
     await query('ROLLBACK').catch(() => {});
     res.status(500).json({ error: 'server error' });
   }
@@ -110,13 +180,13 @@ router.post('/trade/:id/trade-add-tracking', requireAuth, async (req, res) => {
   try {
     const r = await query(
       `UPDATE trade_orders
-       SET tracking_number=$1, status='shipping', updated_at=NOW()
+       SET tracking_number=$1, status='shipping', shipped_at=NOW(), updated_at=NOW()
        WHERE id=$2 AND sender_id=$3 AND status='waiting_shipping'
        RETURNING id,status,tracking_number,receiver_id,post_id`,
       [tracking_number, orderId, userId]
-    );
+    );    
     if (!r.rowCount) return res.status(400).json({ error: 'ไม่พบคำสั่งซื้อหรือสถานะไม่ถูกต้อง' });
-
+    
     await query(
       `INSERT INTO notifications (user_id,message,post_id,actor_id)
        VALUES ($1,$2,$3,$4)`,
@@ -142,11 +212,11 @@ router.post('/trade/:id/trade-confirm-delivery', requireAuth, async (req, res) =
   try {
     const r = await query(
       `UPDATE trade_orders
-       SET status='completed', updated_at=NOW()
+       SET status='completed', delivered_at=NOW(), updated_at=NOW()
        WHERE id=$1 AND receiver_id=$2 AND status IN ('shipping','waiting_shipping')
        RETURNING id,status,sender_id,post_id`,
       [orderId, userId]
-    );
+    );    
     if (!r.rowCount) return res.status(400).json({ error: 'ไม่พบคำสั่งซื้อหรือสถานะไม่ถูกต้อง' });
 
     await query(
@@ -210,6 +280,8 @@ router.get('/trade/:id', requireAuth, async (req, res) => {
   const orderId = Number(req.params.id);
   const userId = req.user.id;
 
+  console.log(`GET /trade/${orderId} - userId=${userId}`);
+
   try {
     const r = await query(
       `
@@ -218,46 +290,67 @@ router.get('/trade/:id', requireAuth, async (req, res) => {
         o.trade_id,
         o.sender_id,
         su.username AS sender_username,
+        su.profile_image_url AS sender_profile_image_url,
+        COALESCE(ROUND(AVG(srs.rating)::numeric,1),0) AS sender_rating,
+        COUNT(srs.rating) AS sender_review_count,
+
         o.receiver_id,
         ru.username AS receiver_username,
+        ru.profile_image_url AS receiver_profile_image_url,
+        COALESCE(ROUND(AVG(rrs.rating)::numeric,1),0) AS receiver_rating,
+        COUNT(rrs.rating) AS receiver_review_count,
+
         o.status,
         o.created_at,
         o.tracking_number,
         o.name,
         o.phone,
         o.address,
+
         COALESCE(
-          (SELECT json_agg(json_build_object(
-              'post_id', tp.post_id,
-              'post_title', p.title
-            ))
-           FROM trade_posts tp 
-           JOIN posts p ON p.id = tp.post_id 
-           WHERE tp.trade_id = o.trade_id),
-          '[]'::json
-        ) AS posts,
-        COALESCE(
-          (SELECT json_agg(json_build_object(
-              'title', ti.title,
-              'description', ti.description,
-              'tags', ti.tags,
-              'images', COALESCE(NULLIF(ti.image_url,'')::json,'[]'::json)
-            ))
-           FROM trade_items ti 
-           WHERE ti.trade_id = o.trade_id),
-          '[]'::json
-        ) AS items
+  (
+    SELECT json_agg(json_build_object(
+      'post_id', p.id,
+      'post_title', p.title,
+      'user_id', p.user_id,
+      'description', p.description,
+      'tags', p.tags,
+      'image_url', p.image_url,
+      'seller_rating', COALESCE(sub.avg_rating, 0),
+      'review_count', COALESCE(sub.review_count, 0)
+    ))
+    FROM trade_posts tp
+    JOIN posts p ON p.id = tp.post_id
+    LEFT JOIN (
+      SELECT seller_id, ROUND(AVG(rating)::numeric,1) AS avg_rating, COUNT(rating) AS review_count
+      FROM seller_reviews
+      GROUP BY seller_id
+    ) sub ON sub.seller_id = p.user_id
+    WHERE tp.trade_id = o.trade_id
+  ),
+  '[]'::json
+) AS posts
+
       FROM trade_orders o
       JOIN users su ON su.id = o.sender_id
       JOIN users ru ON ru.id = o.receiver_id
+      LEFT JOIN seller_reviews srs ON srs.seller_id = su.id
+      LEFT JOIN seller_reviews rrs ON rrs.seller_id = ru.id
       WHERE o.id = $1 AND (o.sender_id = $2 OR o.receiver_id = $2)
+      GROUP BY 
+        o.id, su.id, ru.id
       `,
       [orderId, userId]
     );
 
-    if (!r.rowCount) return res.status(404).json({ error: 'ไม่พบใบสั่งเทรดนี้' });
+    if (!r.rowCount) {
+      console.log(`No trade_order found for order_id=${orderId}, user_id=${userId}`);
+      return res.status(404).json({ error: 'ไม่พบใบสั่งเทรดนี้' });
+    }
 
     const row = r.rows[0];
+    console.log(`Found trade_order: order_id=${row.order_id}, posts=${row.posts?.length || 0}`);
+
     res.json({
       order_id: row.order_id,
       trade_id: row.trade_id,
@@ -267,10 +360,16 @@ router.get('/trade/:id', requireAuth, async (req, res) => {
       sender: {
         id: row.sender_id,
         username: row.sender_username,
+        profile_image_url: row.sender_profile_image_url,
+        rating: Number(row.sender_rating),
+        review_count: Number(row.sender_review_count),
       },
       receiver: {
         id: row.receiver_id,
         username: row.receiver_username,
+        profile_image_url: row.receiver_profile_image_url,
+        rating: Number(row.receiver_rating),
+        review_count: Number(row.receiver_review_count), 
       },
       shipping: {
         name: row.name,
@@ -278,11 +377,10 @@ router.get('/trade/:id', requireAuth, async (req, res) => {
         address: row.address,
       },
       posts: row.posts ?? [],
-      items: row.items ?? [],
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'server error' });
+    console.error('Error in GET /trade/:id:', err);
+    res.status(500).json({ error: 'server error', details: err.message });
   }
 });
 

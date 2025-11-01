@@ -98,6 +98,67 @@ router.get('/', async (req, res) => {
   }
 });
 
+// ดึงโพสต์ทุกสถานะ (รวม pending / closed / rejected)
+router.get('/all', async (req, res) => {
+  const { q, tag } = req.query;
+
+  let sql = `
+    SELECT p.*, 
+      u.username AS seller_username, 
+      u.profile_image_url AS seller_profile_image_url, 
+      COALESCE(ROUND(AVG(sr.rating)::numeric, 1), 0) AS seller_rating,
+      COALESCE(COUNT(sr.rating), 0) AS review_count,
+      CASE 
+        WHEN LOWER(p.title) LIKE LOWER($1 || '%') THEN 3
+        WHEN LOWER(p.title) LIKE LOWER('%' || $1 || '%') THEN 2
+        WHEN EXISTS (
+          SELECT 1 FROM unnest(p.tags) AS t 
+          WHERE LOWER(t) LIKE LOWER('%' || $1 || '%')
+        ) THEN 1
+        ELSE 0
+      END AS relevance
+    FROM posts p
+    JOIN users u ON u.id = p.user_id
+    LEFT JOIN seller_reviews sr ON sr.seller_id = p.user_id
+    WHERE 1=1
+  `;
+
+  const ps = [q || ''];
+
+  // ถ้ามี tag filter
+  if (tag) {
+    ps.push(tag.toLowerCase());
+    sql += `
+      AND EXISTS (
+        SELECT 1 FROM unnest(p.tags) AS t 
+        WHERE LOWER(t) = $${ps.length}
+      )
+    `;
+  }
+
+  // เงื่อนไขค้นหา (ชื่อหรือแท็ก)
+  sql += `
+    AND (
+      $1 = ''
+      OR LOWER(p.title) LIKE LOWER('%' || $1 || '%')
+      OR EXISTS (
+        SELECT 1 FROM unnest(p.tags) AS t 
+        WHERE LOWER(t) LIKE LOWER('%' || $1 || '%')
+      )
+    )
+    GROUP BY p.id, u.username, u.profile_image_url
+    ORDER BY relevance DESC, p.promoted_at DESC NULLS LAST, p.created_at DESC
+  `;
+
+  try {
+    const r = await query(sql, ps);
+    res.json(r.rows);
+  } catch (err) {
+    console.error(" Error fetching all posts:", err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
 // ดึงรายละเอียดโพสต์ตาม id
 router.get('/:id', async (req, res) => {
   const sql = `
