@@ -211,10 +211,7 @@ CREATE TABLE IF NOT EXISTS orders (
   shipping_service TEXT,
   tracking_number TEXT,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  confirmed_at TIMESTAMP,
-  shipped_at TIMESTAMP,
-  delivered_at TIMESTAMP 
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_orders_post_buyer
@@ -244,6 +241,11 @@ BEGIN
   END IF;
 END
 $$ LANGUAGE plpgsql;
+-- เพิ่มคอลัมน์ timestamp สำหรับเก็บไทม์ไลน์ของการซื้อ
+ALTER TABLE orders
+  ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP,    -- วันที่ผู้ขายตรวจสอบการชำระเงินสำเร็จ
+  ADD COLUMN IF NOT EXISTS shipped_at TIMESTAMP,      -- วันที่ผู้ขายแจ้งเลขพัสดุ
+  ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP;    -- วันที่ผู้ซื้อได้รับพัสดุ
 
 -- 12. SELLER REVIEWS
 DO $$ BEGIN
