@@ -26,6 +26,7 @@ router.get('/trade/by-post/:postId', requireAuth, async (req, res) => {
         o.status,
         o.created_at,
         o.tracking_number,
+        o.shipping_service, 
         o.name,
         o.phone,
         o.address
@@ -164,33 +165,48 @@ router.post('/trade/:tradeId/confirm', requireAuth, textOnly.none(), async (req,
     res.status(500).json({ error: 'server error' });
   }
 });
-
 /**
- * POST /api/orders/trade/:id/add-tracking
+ * POST /api/orders/trade/:id/trade-add-tracking
  * ผู้ส่ง (sender) ของใบนี้เท่านั้นที่ใส่เลขพัสดุได้
  * เปลี่ยน status -> shipping
  */
 router.post('/trade/:id/trade-add-tracking', requireAuth, async (req, res) => {
   const orderId = Number(req.params.id);
-  const { tracking_number } = req.body;
+  const { tracking_number, shipping_service } = req.body;
   const userId = req.user.id;
 
-  if (!tracking_number) return res.status(400).json({ error: 'ต้องระบุ tracking number' });
+  if (!tracking_number)
+    return res.status(400).json({ error: 'ต้องระบุ tracking number' });
+  if (!shipping_service)
+    return res.status(400).json({ error: 'ต้องระบุชื่อบริษัทขนส่ง' });
 
   try {
     const r = await query(
       `UPDATE trade_orders
-       SET tracking_number=$1, status='shipping', shipped_at=NOW(), updated_at=NOW()
-       WHERE id=$2 AND sender_id=$3 AND status='waiting_shipping'
-       RETURNING id,status,tracking_number,receiver_id,post_id`,
-      [tracking_number, orderId, userId]
-    );    
-    if (!r.rowCount) return res.status(400).json({ error: 'ไม่พบคำสั่งซื้อหรือสถานะไม่ถูกต้อง' });
-    
+       SET tracking_number=$1,
+           shipping_service=$2,
+           status='shipping',
+           shipped_at=NOW(),
+           updated_at=NOW()
+       WHERE id=$3 AND sender_id=$4 AND status='waiting_shipping'
+       RETURNING id,status,tracking_number,shipping_service,receiver_id,post_id`,
+      [tracking_number, shipping_service, orderId, userId]
+    );
+
+    if (!r.rowCount)
+      return res
+        .status(400)
+        .json({ error: 'ไม่พบคำสั่งซื้อหรือสถานะไม่ถูกต้อง' });
+
     await query(
       `INSERT INTO notifications (user_id,message,post_id,actor_id)
        VALUES ($1,$2,$3,$4)`,
-      [r.rows[0].receiver_id, `สินค้าของคุณได้ถูกจัดส่งแล้ว, tracking number: ${tracking_number}`, r.rows[0].post_id, userId]
+      [
+        r.rows[0].receiver_id,
+        `คำสั่งซื้อของคุณถูกจัดส่งแล้วโดย ${shipping_service} หมายเลขพัสดุ: ${tracking_number}`,
+        r.rows[0].post_id,
+        userId,
+      ]
     );
 
     res.json({ ok: true, order: r.rows[0] });
@@ -199,6 +215,7 @@ router.post('/trade/:id/trade-add-tracking', requireAuth, async (req, res) => {
     res.status(500).json({ error: 'server error' });
   }
 });
+
 
 /**
  * POST /api/orders/trade/:id/confirm-delivery
@@ -238,38 +255,100 @@ router.post('/trade/:id/trade-confirm-delivery', requireAuth, async (req, res) =
  */
 router.get('/trade/my', requireAuth, async (req, res) => {
   const userId = req.user.id;
+
   try {
     const r = await query(
-      `SELECT o.id AS order_id,o.trade_id,o.sender_id,o.receiver_id,o.status,o.created_at,
+      `
+      SELECT 
+        o.id AS order_id,
+        o.trade_id,
+        o.sender_id,
+        su.username AS sender_username,
+        su.profile_image_url AS sender_profile_image_url,
+        COALESCE(ROUND(AVG(srs.rating)::numeric,1),0) AS sender_rating,
+        COUNT(srs.rating) AS sender_review_count,
+
+        o.receiver_id,
+        ru.username AS receiver_username,
+        ru.profile_image_url AS receiver_profile_image_url,
+        COALESCE(ROUND(AVG(rrs.rating)::numeric,1),0) AS receiver_rating,
+        COUNT(rrs.rating) AS receiver_review_count,
+
+        o.status,
+        o.created_at,
+        o.updated_at,
+        o.tracking_number,
+        o.shipping_service, 
+        o.name,
+        o.phone,
+        o.address,
+
+        -- เพิ่ม timestamps ไทม์ไลน์การเทรด
+        o.partner_confirmed_at,
+        o.shipped_at,
+        o.partner_shipped_at,
+        o.delivered_at,
+        o.partner_delivered_at,
+
+        -- เพิ่ม is_owner ใน posts
         COALESCE(
-          (SELECT json_agg(json_build_object('post_id',tp.post_id,'post_title',p.title))
-           FROM trade_posts tp JOIN posts p ON p.id=tp.post_id WHERE tp.trade_id=o.trade_id),
+          (
+            SELECT json_agg(
+              json_build_object(
+                'post_id', p.id,
+                'post_title', p.title,
+                'description', p.description,
+                'tags', p.tags,
+                'image_url', p.image_url,
+                'status', p.status,
+                'is_owner', CASE 
+                  WHEN p.user_id = $1 AND o.receiver_id = $1 THEN true 
+                  ELSE false 
+                END
+              )
+            )
+            FROM trade_posts tp
+            JOIN posts p ON p.id = tp.post_id
+            WHERE tp.trade_id = o.trade_id
+          ),
           '[]'::json
         ) AS posts,
+
         COALESCE(
-          (SELECT json_agg(json_build_object('title',ti.title,'description',ti.description,'tags',ti.tags,'images',COALESCE(NULLIF(ti.image_url,'')::json,'[]'::json)))
-           FROM trade_items ti WHERE ti.trade_id=o.trade_id),
+          (
+            SELECT json_agg(
+              json_build_object(
+                'title', ti.title,
+                'description', ti.description,
+                'tags', ti.tags,
+                'images', COALESCE(NULLIF(ti.image_url,'')::json,'[]'::json)
+              )
+            )
+            FROM trade_items ti
+            WHERE ti.trade_id = o.trade_id
+          ),
           '[]'::json
         ) AS items
-       FROM trade_orders o
-       WHERE o.sender_id=$1 OR o.receiver_id=$1
-       ORDER BY o.created_at DESC`,
+
+      FROM trade_orders o
+      JOIN users su ON su.id = o.sender_id
+      JOIN users ru ON ru.id = o.receiver_id
+      LEFT JOIN seller_reviews srs ON srs.seller_id = su.id
+      LEFT JOIN seller_reviews rrs ON rrs.seller_id = ru.id
+      WHERE o.sender_id = $1 OR o.receiver_id = $1
+      GROUP BY o.id, su.id, ru.id
+      ORDER BY o.created_at DESC
+      `,
       [userId]
     );
 
-    const as_sender = [];
-    const as_receiver = [];
-    for (const row of r.rows) {
-      const base = { trade_id: row.trade_id, status: row.status, created_at: row.created_at, posts: row.posts ?? [], items: row.items ?? [] };
-      if (row.sender_id === userId) as_sender.push(base); else as_receiver.push(base);
-    }
-
-    res.json({ myTrades: { as_sender, as_receiver } });
+    res.json({ myTrades: r.rows });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'server error' });
+    console.error('Error in GET /trade/my:', err);
+    res.status(500).json({ error: 'server error', details: err.message });
   }
 });
+
 
 
 /**
@@ -303,6 +382,7 @@ router.get('/trade/:id', requireAuth, async (req, res) => {
         o.status,
         o.created_at,
         o.tracking_number,
+        o.shipping_service, 
         o.name,
         o.phone,
         o.address,
@@ -357,6 +437,7 @@ router.get('/trade/:id', requireAuth, async (req, res) => {
       status: row.status,
       created_at: row.created_at,
       tracking_number: row.tracking_number,
+      shipping_service: row.shipping_service, 
       sender: {
         id: row.sender_id,
         username: row.sender_username,
@@ -369,7 +450,7 @@ router.get('/trade/:id', requireAuth, async (req, res) => {
         username: row.receiver_username,
         profile_image_url: row.receiver_profile_image_url,
         rating: Number(row.receiver_rating),
-        review_count: Number(row.receiver_review_count), 
+        review_count: Number(row.receiver_review_count),
       },
       shipping: {
         name: row.name,
@@ -377,7 +458,7 @@ router.get('/trade/:id', requireAuth, async (req, res) => {
         address: row.address,
       },
       posts: row.posts ?? [],
-    });
+    });    
   } catch (err) {
     console.error('Error in GET /trade/:id:', err);
     res.status(500).json({ error: 'server error', details: err.message });
