@@ -40,10 +40,10 @@ router.get('/my-trades', requireAuth, async (req, res) => {
             )) AS items
      FROM trades t
      LEFT JOIN trade_items ti ON ti.trade_id = t.id
-     WHERE t.proposer_id=$1 AND t.status=$2
+     WHERE t.proposer_id=$1
      GROUP BY t.id, t.status
      ORDER BY t.id DESC`,
-    [req.user.id, 'pending']
+    [req.user.id]   
   );
 
   if (!tradesRes.rowCount) {
@@ -69,6 +69,7 @@ router.get('/my-trades', requireAuth, async (req, res) => {
 
   res.json({ trades });
 });
+
 
 
 function buildItemsFromBody(body) {
@@ -335,20 +336,35 @@ router.get('/:postId', requireAuth, async (req, res) => {
   const isOwner = post.rows[0].user_id === req.user.id;
 
   const offersRes = await query(
-    `SELECT t.id, t.proposer_id, t.status, u.username,
-            json_agg(json_build_object(
-              'title', ti.title,
-              'description', ti.description,
-              'tags', ti.tags,
-              'images', ti.image_url
-            )) AS items
-     FROM trades t
-     JOIN trade_posts tp ON tp.trade_id = t.id
-     JOIN users u ON u.id = t.proposer_id
-     LEFT JOIN trade_items ti ON ti.trade_id = t.id
-     WHERE tp.post_id=$1 ${isOwner ? '' : 'AND t.proposer_id=$2'}
-     GROUP BY t.id, t.proposer_id, t.status, u.username
-     ORDER BY t.id DESC`,
+    `
+    SELECT 
+      t.id, 
+      t.proposer_id, 
+      t.status, 
+      u.username,
+      u.profile_image_url,
+
+      COALESCE(ROUND(AVG(sr.rating)::numeric, 1), 0) AS rating,
+      COALESCE(COUNT(sr.rating), 0) AS review_count,
+
+      json_agg(
+        json_build_object(
+          'title', ti.title,
+          'description', ti.description,
+          'tags', ti.tags,
+          'images', ti.image_url
+        )
+      ) AS items
+
+    FROM trades t
+    JOIN trade_posts tp ON tp.trade_id = t.id
+    JOIN users u ON u.id = t.proposer_id
+    LEFT JOIN trade_items ti ON ti.trade_id = t.id
+    LEFT JOIN seller_reviews sr ON sr.seller_id = u.id 
+    WHERE tp.post_id=$1 ${isOwner ? '' : 'AND t.proposer_id=$2'}
+    GROUP BY t.id, t.proposer_id, t.status, u.username, u.profile_image_url, u.id
+    ORDER BY t.id DESC
+    `,
     isOwner ? [pid] : [pid, req.user.id]
   );
 
@@ -356,6 +372,9 @@ router.get('/:postId', requireAuth, async (req, res) => {
     tradeId: o.id,
     proposerId: o.proposer_id,
     proposerName: o.username,
+    proposerImage: o.profile_image_url,
+    rating: o.rating,
+    reviewCount: o.review_count, 
     status: o.status,
     items: o.items.map(item => ({
       title: item.title,
@@ -410,7 +429,8 @@ router.post('/:postId/accept/:offerId', requireAuth, textOnly.none(), async (req
       [pid]
     );
     if (!post.rowCount) return res.status(404).json({ error: 'not found' });
-    if (post.rows[0].user_id !== ownerId) return res.status(403).json({ error: 'คุณไม่สามารถยอมรับข้อเสนอการเทรดในโพสต์ของตนเองได้' });
+    if (post.rows[0].user_id !== ownerId)
+      return res.status(403).json({ error: 'คุณไม่สามารถยอมรับข้อเสนอการเทรดในโพสต์ของตนเองได้' });
     if (post.rows[0].status !== 'approved' || !post.rows[0].is_trade)
       return res.status(400).json({ error: 'โพสต์นี้ไม่สามารถทำการเทรดได้' });
 
@@ -429,22 +449,19 @@ router.post('/:postId/accept/:offerId', requireAuth, textOnly.none(), async (req
       return res.status(400).json({ error: 'ข้อเสนอไม่อยู่ในสถานะรอการตอบรับ' });
 
     let { name, phone, address } = req.body;
-    // ดึงข้อมูลจาก users ถ้าไม่ได้ส่งมา
     if (!address || !name || !phone) {
       const user = await query(
         'SELECT address, name, phone FROM users WHERE id=$1',
         [ownerId]
       );
-    
+
       if (user.rowCount) {
-        if (!address)
-          address = user.rows[0].address || null;
-        if (!name)
-          name = user.rows[0].name || null;
-        if (!phone)
-          phone = user.rows[0].phone || null;
+        if (!address) address = user.rows[0].address || null;
+        if (!name) name = user.rows[0].name || null;
+        if (!phone) phone = user.rows[0].phone || null;
       }
     }
+
     if (phone && !/^\d{10}$/.test(phone)) {
       return res.status(400).json({ error: 'หมายเลขโทรศัพท์ต้องมี 10 หลัก' });
     }
@@ -460,10 +477,25 @@ router.post('/:postId/accept/:offerId', requireAuth, textOnly.none(), async (req
     if (!updTrade.rowCount)
       return res.status(400).json({ error: 'การเทรดถูกยอมรับแล้วหรือไม่ถูกต้อง' });
 
+    await query(
+      `UPDATE posts SET status='waiting' WHERE id=$1`,
+      [pid]
+    );
+
+    await query(
+      `UPDATE trades 
+       SET status='rejected'
+       WHERE id <> $1
+         AND id IN (SELECT tp.trade_id FROM trade_posts tp WHERE tp.post_id=$2)
+         AND status='pending'`,
+      [trade_id, pid]
+    );
+
+    // ตรวจว่ามี trade_orders เดิมอยู่ไหม
     const exists = await query(
       `SELECT id FROM trade_orders
-       WHERE trade_id=$1 AND sender_id=$2 AND receiver_id=$3`,
-      [trade_id, proposer_id, ownerId]
+       WHERE trade_id=$1 AND post_id=$2 AND sender_id=$3 AND receiver_id=$4`,
+      [trade_id, pid, proposer_id, ownerId]
     );
 
     let tradeOrderId;
@@ -478,10 +510,10 @@ router.post('/:postId/accept/:offerId', requireAuth, textOnly.none(), async (req
     } else {
       const ins = await query(
         `INSERT INTO trade_orders
-         (trade_id, sender_id, receiver_id, status, name, phone, address)
-         VALUES ($1,$2,$3,'waiting_shipping',$4,$5,$6)
+         (trade_id, post_id, sender_id, receiver_id, status, name, phone, address)
+         VALUES ($1,$2,$3,$4,'waiting_shipping',$5,$6,$7)
          RETURNING id`,
-        [trade_id, proposer_id, ownerId, name, phone, address]
+        [trade_id, pid, proposer_id, ownerId, name, phone, address]
       );
       tradeOrderId = ins.rows[0].id;
     }
@@ -492,7 +524,12 @@ router.post('/:postId/accept/:offerId', requireAuth, textOnly.none(), async (req
       [proposer_id, 'ข้อเสนอการเทรดของคุณถูกยอมรับแล้ว กรุณายืนยันเพื่อดำเนินการต่อ', pid, ownerId]
     );
 
-    res.json({ ok: true, message: 'Trade accepted, waiting proposer to confirm', tradeOrderId });
+    res.json({
+      ok: true,
+      message: 'Trade accepted, waiting proposer to confirm',
+      tradeOrderId,
+      post_id: pid
+    });
   } catch (err) {
     console.error('เกิดข้อผิดพลาดในการยอมรับการเทรด:', err);
     res.status(500).json({ error: 'server error' });
@@ -500,30 +537,42 @@ router.post('/:postId/accept/:offerId', requireAuth, textOnly.none(), async (req
 });
 
 
-// ดึง trade เดียวตาม id
+
+// ดึง trade เดียวตาม id (เพิ่ม profile_image_url, rating, review_count)
 router.get('/:id/detail', requireAuth, async (req, res) => {
   const tradeId = Number(req.params.id);
   const userId = req.user.id;
 
   const result = await query(`
-    SELECT t.id, t.status, t.proposer_id, u.username,
-           json_agg(json_build_object(
-             'title', ti.title,
-             'description', ti.description,
-             'tags', ti.tags,
-             'images', ti.image_url
-           )) AS items
+    SELECT 
+      t.id, 
+      t.status, 
+      t.proposer_id, 
+      u.username, 
+      u.profile_image_url,
+      COALESCE(ROUND(AVG(sr.rating)::numeric, 1), 0) AS rating,
+      COALESCE(COUNT(sr.rating), 0) AS review_count,
+      json_agg(
+        json_build_object(
+          'title', ti.title,
+          'description', ti.description,
+          'tags', ti.tags,
+          'images', ti.image_url
+        )
+      ) AS items
     FROM trades t
     JOIN users u ON u.id = t.proposer_id
     LEFT JOIN trade_items ti ON ti.trade_id = t.id
+    LEFT JOIN seller_reviews sr ON sr.seller_id = u.id 
     WHERE t.id = $1
-    GROUP BY t.id, t.status, t.proposer_id, u.username
+    GROUP BY t.id, t.status, t.proposer_id, u.username, u.profile_image_url
   `, [tradeId]);
 
   if (!result.rowCount)
     return res.status(404).json({ error: 'ไม่พบข้อเสนอเทรด' });
 
   const trade = result.rows[0];
+
   // ตรวจสอบสิทธิ์: ผู้เสนอเทรดหรือเจ้าของโพสต์เท่านั้น
   const post = await query(`
     SELECT p.user_id
@@ -538,8 +587,14 @@ router.get('/:id/detail', requireAuth, async (req, res) => {
 
   res.json({
     id: trade.id,
-    proposer: { id: trade.proposer_id, username: trade.username },
     status: trade.status,
+    proposer: {
+      id: trade.proposer_id,
+      username: trade.username,
+      profile_image_url: trade.profile_image_url,
+      rating: parseFloat(trade.rating) || 0,
+      review_count: parseInt(trade.review_count) || 0
+    },
     items: trade.items.map(it => ({
       title: it.title,
       description: it.description,
