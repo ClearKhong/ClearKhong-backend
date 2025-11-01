@@ -40,10 +40,10 @@ router.get('/my-trades', requireAuth, async (req, res) => {
             )) AS items
      FROM trades t
      LEFT JOIN trade_items ti ON ti.trade_id = t.id
-     WHERE t.proposer_id=$1 AND t.status=$2
+     WHERE t.proposer_id=$1
      GROUP BY t.id, t.status
      ORDER BY t.id DESC`,
-    [req.user.id, 'pending']
+    [req.user.id]   
   );
 
   if (!tradesRes.rowCount) {
@@ -69,6 +69,7 @@ router.get('/my-trades', requireAuth, async (req, res) => {
 
   res.json({ trades });
 });
+
 
 
 function buildItemsFromBody(body) {
@@ -498,6 +499,59 @@ router.post('/:postId/accept/:offerId', requireAuth, textOnly.none(), async (req
     res.status(500).json({ error: 'server error' });
   }
 });
+
+
+// ดึง trade เดียวตาม id
+router.get('/:id/detail', requireAuth, async (req, res) => {
+  const tradeId = Number(req.params.id);
+  const userId = req.user.id;
+
+  const result = await query(`
+    SELECT t.id, t.status, t.proposer_id, u.username,
+           json_agg(json_build_object(
+             'title', ti.title,
+             'description', ti.description,
+             'tags', ti.tags,
+             'images', ti.image_url
+           )) AS items
+    FROM trades t
+    JOIN users u ON u.id = t.proposer_id
+    LEFT JOIN trade_items ti ON ti.trade_id = t.id
+    WHERE t.id = $1
+    GROUP BY t.id, t.status, t.proposer_id, u.username
+  `, [tradeId]);
+
+  if (!result.rowCount)
+    return res.status(404).json({ error: 'ไม่พบข้อเสนอเทรด' });
+
+  const trade = result.rows[0];
+  // ตรวจสอบสิทธิ์: ผู้เสนอเทรดหรือเจ้าของโพสต์เท่านั้น
+  const post = await query(`
+    SELECT p.user_id
+    FROM trade_posts tp
+    JOIN posts p ON tp.post_id = p.id
+    WHERE tp.trade_id = $1
+  `, [tradeId]);
+
+  if (post.rowCount && post.rows[0].user_id !== userId && trade.proposer_id !== userId) {
+    return res.status(403).json({ error: 'ไม่มีสิทธิ์เข้าถึง trade นี้' });
+  }
+
+  res.json({
+    id: trade.id,
+    proposer: { id: trade.proposer_id, username: trade.username },
+    status: trade.status,
+    items: trade.items.map(it => ({
+      title: it.title,
+      description: it.description,
+      tags: it.tags || [],
+      images: (() => {
+        try { return JSON.parse(it.images || '[]'); } catch { return []; }
+      })()
+    })),
+  });
+});
+
 // // เจ้าของโพสต์ยอมรับข้อเสนอการเทรด (แต่ยังไม่ปิดโพสต์และไม่สร้าง order)
 // router.post('/:postId/accept/:offerId', requireAuth, async (req,res)=>{
 //   const pid = Number(req.params.postId);
