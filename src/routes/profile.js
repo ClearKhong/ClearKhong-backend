@@ -101,7 +101,6 @@ router.put('/me', requireAuth, upload.single('profileImage'), async (req, res) =
 });
 
 // ดึงประวัติการใช้งานของตัวเอง (โพสต์, ซื้อ, เทรด) (ต้องล็อกอิน)
-// ดึงประวัติการใช้งานของตัวเอง (โพสต์, ซื้อ, เทรด) (ต้องล็อกอิน)
 router.get('/history', requireAuth, async (req, res) => {
   const userId = req.user.id;
 
