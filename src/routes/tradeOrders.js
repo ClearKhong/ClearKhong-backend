@@ -238,38 +238,99 @@ router.post('/trade/:id/trade-confirm-delivery', requireAuth, async (req, res) =
  */
 router.get('/trade/my', requireAuth, async (req, res) => {
   const userId = req.user.id;
+
   try {
     const r = await query(
-      `SELECT o.id AS order_id,o.trade_id,o.sender_id,o.receiver_id,o.status,o.created_at,
+      `
+      SELECT 
+        o.id AS order_id,
+        o.trade_id,
+        o.sender_id,
+        su.username AS sender_username,
+        su.profile_image_url AS sender_profile_image_url,
+        COALESCE(ROUND(AVG(srs.rating)::numeric,1),0) AS sender_rating,
+        COUNT(srs.rating) AS sender_review_count,
+
+        o.receiver_id,
+        ru.username AS receiver_username,
+        ru.profile_image_url AS receiver_profile_image_url,
+        COALESCE(ROUND(AVG(rrs.rating)::numeric,1),0) AS receiver_rating,
+        COUNT(rrs.rating) AS receiver_review_count,
+
+        o.status,
+        o.created_at,
+        o.updated_at,
+        o.tracking_number,
+        o.name,
+        o.phone,
+        o.address,
+
+        -- เพิ่ม timestamps ไทม์ไลน์การเทรด
+        o.partner_confirmed_at,
+        o.shipped_at,
+        o.partner_shipped_at,
+        o.delivered_at,
+        o.partner_delivered_at,
+
+        -- เพิ่ม is_owner ใน posts
         COALESCE(
-          (SELECT json_agg(json_build_object('post_id',tp.post_id,'post_title',p.title))
-           FROM trade_posts tp JOIN posts p ON p.id=tp.post_id WHERE tp.trade_id=o.trade_id),
+          (
+            SELECT json_agg(
+              json_build_object(
+                'post_id', p.id,
+                'post_title', p.title,
+                'description', p.description,
+                'tags', p.tags,
+                'image_url', p.image_url,
+                'status', p.status,
+                'is_owner', CASE 
+                  WHEN p.user_id = $1 AND o.receiver_id = $1 THEN true 
+                  ELSE false 
+                END
+              )
+            )
+            FROM trade_posts tp
+            JOIN posts p ON p.id = tp.post_id
+            WHERE tp.trade_id = o.trade_id
+          ),
           '[]'::json
         ) AS posts,
+
         COALESCE(
-          (SELECT json_agg(json_build_object('title',ti.title,'description',ti.description,'tags',ti.tags,'images',COALESCE(NULLIF(ti.image_url,'')::json,'[]'::json)))
-           FROM trade_items ti WHERE ti.trade_id=o.trade_id),
+          (
+            SELECT json_agg(
+              json_build_object(
+                'title', ti.title,
+                'description', ti.description,
+                'tags', ti.tags,
+                'images', COALESCE(NULLIF(ti.image_url,'')::json,'[]'::json)
+              )
+            )
+            FROM trade_items ti
+            WHERE ti.trade_id = o.trade_id
+          ),
           '[]'::json
         ) AS items
-       FROM trade_orders o
-       WHERE o.sender_id=$1 OR o.receiver_id=$1
-       ORDER BY o.created_at DESC`,
+
+      FROM trade_orders o
+      JOIN users su ON su.id = o.sender_id
+      JOIN users ru ON ru.id = o.receiver_id
+      LEFT JOIN seller_reviews srs ON srs.seller_id = su.id
+      LEFT JOIN seller_reviews rrs ON rrs.seller_id = ru.id
+      WHERE o.sender_id = $1 OR o.receiver_id = $1
+      GROUP BY o.id, su.id, ru.id
+      ORDER BY o.created_at DESC
+      `,
       [userId]
     );
 
-    const as_sender = [];
-    const as_receiver = [];
-    for (const row of r.rows) {
-      const base = { trade_id: row.trade_id, status: row.status, created_at: row.created_at, posts: row.posts ?? [], items: row.items ?? [] };
-      if (row.sender_id === userId) as_sender.push(base); else as_receiver.push(base);
-    }
-
-    res.json({ myTrades: { as_sender, as_receiver } });
+    res.json({ myTrades: r.rows });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'server error' });
+    console.error('Error in GET /trade/my:', err);
+    res.status(500).json({ error: 'server error', details: err.message });
   }
 });
+
 
 
 /**
