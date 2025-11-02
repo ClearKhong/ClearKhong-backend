@@ -1,15 +1,15 @@
+// src/routes/notifications.js
 import { Router } from 'express';
 import { query } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
-// ✅ ดึงการแจ้งเตือนของผู้ใช้ (ต้องล็อกอิน)
+// 1) ดึง noti ทั้งหมด
 router.get('/', requireAuth, async (req, res) => {
   try {
-    console.log('👤 Fetching notifications for user:', req.user.id);
-
-    const result = await query(`
+    const result = await query(
+      `
       SELECT 
         n.id,
         n.message,
@@ -31,22 +31,88 @@ router.get('/', requireAuth, async (req, res) => {
       LEFT JOIN posts p ON n.post_id = p.id
       WHERE n.user_id = $1
       ORDER BY n.created_at DESC
-    `, [req.user.id]);
-
-    console.log(`✅ Found ${result.rows.length} notifications`);
+      `,
+      [req.user.id]
+    );
 
     res.json(result.rows);
   } catch (err) {
-    console.error('❌ Error fetching notifications:', err.message);
-    console.error('Stack:', err.stack);
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: err.message
-    });
+    console.error('❌ Error fetching notifications:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
-// ✅ ตั้งค่า read = true
+// 2) ดึง "ประวัติเหรียญ" จาก noti (สำคัญอันนี้)
+router.get('/history', requireAuth, async (req, res) => {
+  try {
+    const r = await query(
+      `
+      SELECT 
+        id,
+        message,
+        created_at
+      FROM notifications
+      WHERE user_id = $1
+        AND (
+          message LIKE '%หักโทเคน % tokens%'   -- โปรโมท / อนุมัติแล้วหัก 10
+          OR message LIKE 'ซื้อ % tokens สำเร็จ' -- ซื้อเหรียญ
+        )
+      ORDER BY created_at DESC
+      `,
+      [req.user.id]
+    );
+
+    const rows = r.rows.map((row) => {
+      const msg = row.message || '';
+      let amount = 0;
+      let type = 'expanse';
+
+      // ซื้อ 100 tokens สำเร็จ
+      if (msg.startsWith('ซื้อ ') && msg.endsWith(' tokens สำเร็จ')) {
+        const m = msg.match(/ซื้อ\s+(\d+)\s+tokens/);
+        amount = m ? Number(m[1]) : 0;
+        type = 'income';
+      } else if (msg.includes('หักโทเคน')) {
+        // โปรโมท / อนุมัติโพสต์
+        const m = msg.match(/หักโทเคน\s+(\d+)\s+tokens/);
+        amount = m ? -Number(m[1]) : 0;
+        type = 'expanse';
+      }
+
+      return {
+        id: row.id,
+        message: row.message,
+        created_at: row.created_at,
+        amount,
+        type,
+      };
+    });
+
+    res.json(rows);
+  } catch (err) {
+    console.error('❌ tokens/history error:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// 3) mark read ทั้งหมด
+router.post('/read-all', requireAuth, async (req, res) => {
+  try {
+    const result = await query(
+      `UPDATE notifications 
+       SET read = true 
+       WHERE user_id = $1 AND read = false
+       RETURNING id`,
+      [req.user.id]
+    );
+    res.json({ ok: true, count: result.rows.length });
+  } catch (err) {
+    console.error('❌ Error marking all as read:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// 4) mark read รายตัว
 router.post('/:id/read', requireAuth, async (req, res) => {
   try {
     const result = await query(
@@ -61,29 +127,9 @@ router.post('/:id/read', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'Notification not found' });
     }
 
-    console.log(`✅ Marked notification ${req.params.id} as read`);
     res.json({ ok: true, notification: result.rows[0] });
   } catch (err) {
     console.error('❌ Error marking as read:', err);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-// ✅ ตั้งค่าอ่านทั้งหมด
-router.post('/read-all', requireAuth, async (req, res) => {
-  try {
-    const result = await query(
-      `UPDATE notifications 
-       SET read = true 
-       WHERE user_id = $1 AND read = false
-       RETURNING id`,
-      [req.user.id]
-    );
-
-    console.log(`✅ Marked ${result.rows.length} notifications as read`);
-    res.json({ ok: true, count: result.rows.length });
-  } catch (err) {
-    console.error('❌ Error marking all as read:', err);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });

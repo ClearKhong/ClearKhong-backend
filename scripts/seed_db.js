@@ -168,6 +168,36 @@ async function insertNotification(
   );
 }
 
+
+// ====================================
+// 📣 PROMOTE NOTI HELPER
+// ====================================
+async function insertPromoteNotisForUser(userId, posts, cost = 20) {
+  // posts: เป็น array ของ {id, title, user_id}
+  if (!posts || posts.length === 0) return;
+
+  // เลือกโพสต์ที่เป็นของ user นี้ก่อน
+  const ownPosts = posts.filter((p) => p.user_id === userId);
+
+  // ถ้าไม่มีโพสต์ของตัวเองเลย ให้ใช้โพสต์รวม
+  const pickFrom = ownPosts.length > 0 ? ownPosts : posts;
+
+  // เอาแค่ 4 อันพอ
+  const limit = Math.min(4, pickFrom.length);
+
+  for (let i = 0; i < limit; i++) {
+    const p = pickFrom[i];
+    await insertNotification(
+      userId,
+      `โปรโมทโพสต์ ${p.title} สำเร็จ! (หักโทเคน ${cost} tokens)`,
+      new Date(),       // ตอนนี้เลย
+      p.id,             // ผูกกับโพสต์
+      null              // ไม่ต้องมี actor_id
+    );
+  }
+}
+
+
 // ====================================
 // 🚀 MAIN SEED RUN
 // ====================================
@@ -444,6 +474,24 @@ async function run() {
       `SELECT COUNT(*) AS c FROM notifications WHERE user_id = $1`,
       [userId]
     );
+
+    // ✅ ADD: ต่อให้มี noti แล้ว เราก็อยากให้มี noti โปรโมตอย่างน้อย 1 อัน
+    const promoExisting = await query(
+      `SELECT COUNT(*) AS c
+       FROM notifications
+       WHERE user_id = $1
+         AND message LIKE 'โปรโมทโพสต์ % สำเร็จ!%'`,
+      [userId]
+    );
+    if (Number(promoExisting.rows[0].c) === 0) {
+      // ดึงโพสต์อีกรอบให้มี title
+      const promoPosts = await query(
+        `SELECT id, user_id, title FROM posts ORDER BY id ASC LIMIT 12`
+      );
+      await insertPromoteNotisForUser(userId, promoPosts.rows, 20);
+    }
+    // ✅ END ADD
+
     if (Number(existing.rows[0].c) > 0) {
       console.log(`⏭️  Skipped notifications for user ${userId} (already exists)`);
       return; // มี notification แล้ว ข้าม
@@ -455,7 +503,7 @@ async function run() {
     const now = new Date();
 
     const shopMessages = [
-      'โพสต์ของคุณได้รับการอนุมัติและเผยแพร่แล้ว (-10 tokens)',
+      'โพสต์ของคุณได้รับการอนุมัติและเผยแพร่แล้ว (หักโทเคน 10 tokens)',
       'โพสต์ของคุณถูกปฏิเสธ',
       'ผู้ซื้อได้ยืนยันการรับสินค้าแล้ว รอรีวิวจากผู้ซื้อ',
       'การเทรดยืนยันแล้ว กรุณาเตรียมส่งสินค้า',
