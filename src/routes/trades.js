@@ -271,9 +271,12 @@ router.post('/:postId/reuse/:tradeId', requireAuth, async (req, res) => {
     return res.status(404).json({ error: 'ไม่พบ Trade' });
 
   const trade = tradeRes.rows[0];
-  if (trade.proposer_id !== req.user.id || trade.status !== 'pending')
+  if (
+    trade.proposer_id !== req.user.id ||
+    (trade.status !== 'pending' && trade.status !== 'rejected')
+  ) {
     return res.status(403).json({ error: 'ไม่สามารถใช้ Trade นี้ได้' });
-
+  }
   const existing = await query(
     'SELECT 1 FROM trade_posts WHERE trade_id=$1 AND post_id=$2',
     [tradeId, pid]
