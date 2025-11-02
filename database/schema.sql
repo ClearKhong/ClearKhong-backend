@@ -302,7 +302,8 @@ ALTER TABLE trade_orders
   ADD COLUMN IF NOT EXISTS shipped_at TIMESTAMP,              -- วันที่คุณแจ้งเลขพัสดุ
   ADD COLUMN IF NOT EXISTS partner_shipped_at TIMESTAMP,      -- วันที่คู่เทรดแจ้งเลขพัสดุ
   ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP,            -- วันที่คุณได้รับพัสดุ
-  ADD COLUMN IF NOT EXISTS partner_delivered_at TIMESTAMP;    -- วันที่คู่เทรดได้รับพัสดุ
+  ADD COLUMN IF NOT EXISTS partner_delivered_at TIMESTAMP,    -- วันที่คู่เทรดได้รับพัสดุ
+  ADD COLUMN IF NOT EXISTS shipping_service TEXT;             -- ชื่อบริการขนส่ง
 
 
 CREATE INDEX IF NOT EXISTS idx_trade_orders_sender    ON trade_orders(sender_id);

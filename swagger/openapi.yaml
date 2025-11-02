@@ -489,6 +489,11 @@ components:
         tracking_number:
           type: string
           example: TH1234567890
+          description: เลขพัสดุของใบเทรดนี้
+        shipping_service:
+          type: string
+          example: Kerry
+          description: ชื่อบริษัทขนส่ง เช่น Kerry, Flash, J&T, ไปรษณีย์ไทย
 
     TradeOrderResponse:
       type: object
@@ -1712,6 +1717,11 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/TradeAddTrackingRequest"
+            examples:
+              ตัวอย่าง:
+                value:
+                  tracking_number: "TH1234567890"
+                  shipping_service: "J&T Express"
       responses:
         "200":
           description: Tracking set
