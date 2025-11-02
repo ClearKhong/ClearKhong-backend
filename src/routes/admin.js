@@ -39,14 +39,16 @@ router.post('/posts/:id/approve', async (req,res)=>{
   if (post.tokens < cost)
     return res.status(400).json({ error: 'ผู้ใช้มีโทเคนไม่เพียงพอ' });
   
+  const postId = req.params.id;
   // หักโทเคนและอนุมัติโพสต์
   await query(`UPDATE users SET tokens = tokens - $1 WHERE id = $2`, [cost, post.user_id]);
-  await query(`UPDATE posts SET status = 'approved' WHERE id = $1`, [req.params.id]);
-  
+  await query(`UPDATE posts SET status = 'approved' WHERE id = $1`, [postId]);
+
   // ส่งแจ้งเตือน
-  await query(`INSERT INTO notifications (user_id,message) VALUES ($1,$2)`, [
+  await query(`INSERT INTO notifications (user_id,message,post_id) VALUES ($1,$2,$3)`, [
     post.user_id, 
-    'โพสต์ของคุณได้รับการอนุมัติและเผยแพร่แล้ว (หักโทเคน 10 tokens)'
+    `โพสต์ของคุณได้รับการอนุมัติและเผยแพร่แล้ว (หักโทเคน ${cost} tokens)`,
+    postId
   ]);
   
   res.json({ok:true, tokensDeducted: cost}); 
@@ -122,7 +124,6 @@ router.post('/reports/:id/status', async (req,res)=>{
   res.json({ ok:true });
 });
 
-export default router;
 
 // ดึงข้อมูลผู้ใช้ตาม id
 router.get('/users/:id', async (req, res) => {
@@ -165,3 +166,6 @@ router.put('/users/:id', upload.single('profileImage'), async (req, res) => {
     return res.status(404).json({ error: 'ไม่พบ' });
   res.json(r.rows[0]);
 });
+
+
+export default router;
