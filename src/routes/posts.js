@@ -236,6 +236,14 @@ router.post('/:id/promote', requireAuth, async (req,res)=>{
 
   await query(`UPDATE users SET tokens=tokens-$1 WHERE id=$2`,[cost,req.user.id]);
   await query(`UPDATE posts SET promoted=true, promoted_at=NOW() WHERE id=$1`,[id]);
+
+    // ส่งแจ้งเตือน
+  await query(`INSERT INTO notifications (user_id,message,post_id) VALUES ($1,$2,$3)`, [
+    p.user_id, 
+    `โปรโมทโพสต์ ${p.title} สำเร็จ! (หักโทเคน ${cost} tokens)`,
+    id
+  ]);
+  
   res.json({ok:true,tokens:tk-cost});
 });
 export default router;

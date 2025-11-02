@@ -4,21 +4,40 @@ import { query, pool } from '../src/db.js';
 const IMG =
   'https://www.apple.com/v/iphone/home/cc/images/overview/consider_modals/environment/modal_trade_in_variant__ejij0q8th06e_large.jpg';
 
-async function upsertUser(username, role = 'user') {
+// ====================================
+// 👤 USER SEED (เวอร์ชันที่มีรูป + อัปเดตได้)
+// ====================================
+async function upsertUser(username, role = 'user', profileUrl = null) {
   const hash = await bcrypt.hash(username, 10);
+
+  // อธิบาย:
+  // - ถ้ายังไม่มี user → insert ปกติ
+  // - ถ้ามีอยู่แล้ว → อัปเดต role ให้ตรงกับ seed
+  // - รูป: ถ้าใน DB เดิมยังเป็น null → ใช้รูปจาก seed
+  //        ถ้าใน DB เดิมมีรูปอยู่แล้ว → ไม่ทับ
   const inserted = await query(
-    `INSERT INTO users (username, password_hash, role, tokens, is_active)
-     VALUES ($1, $2, $3, 100, true)
-     ON CONFLICT (username) DO NOTHING
+    `INSERT INTO users (username, password_hash, role, tokens, is_active, profile_image_url)
+     VALUES ($1, $2, $3, 100, true, $4)
+     ON CONFLICT (username)
+     DO UPDATE SET
+        role = EXCLUDED.role,
+        profile_image_url = COALESCE(users.profile_image_url, EXCLUDED.profile_image_url)
      RETURNING id`,
-    [username, hash, role]
+    [username, hash, role, profileUrl]
   );
-  if (inserted.rows.length)
+
+  if (inserted.rows.length) {
     return inserted.rows[0].id;
+  }
+
+  // กรณีที่ RETURNING ไม่ได้ (บาง PG ตั้งค่าไว้) → ดึงอีกรอบ
   const r = await query('SELECT id FROM users WHERE username=$1', [username]);
   return r.rows[0].id;
 }
 
+// ====================================
+// 🛒 POST SEED (ของเดิมคุณ ใช้ desc ยาว + รูปหลายรูป)
+// ====================================
 async function insertPostIfNotExists(p) {
   await query(
     `INSERT INTO posts
@@ -52,38 +71,195 @@ async function insertPostIfNotExists(p) {
       p.special_tags || [],
       JSON.stringify(p.image_url),
       p.status,
-      p.promoted || false
+      p.promoted || false,
     ]
   );
 }
 
-async function insertComment(postId, userId, body, parentId = null) {
+// ====================================
+// 💬 COMMENT SEED (เวอร์ชันที่จัด parent/child ไว้เรียบร้อย)
+//      ✅ เพิ่ม guard ไม่ให้ seed ซ้ำถ้ามีอยู่แล้ว
+// ====================================
+async function insertComment(
+  postId,
+  userId,
+  body,
+  parentId = null,
+  createdAt = null
+) {
   const r = await query(
-    `INSERT INTO comments (post_id, user_id, body, parent_comment_id)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO comments (post_id, user_id, body, parent_comment_id, created_at)
+     VALUES ($1, $2, $3, $4, $5)
      RETURNING id`,
-    [postId, userId, body, parentId]
+    [postId, userId, body, parentId, createdAt || new Date()]
   );
   return r.rows[0].id;
 }
 
+async function seedCommentsForPost(postId, ownerId, ids) {
+  // ✅ กันไว้ก่อนเลย ถ้ามีคอมเมนต์ของโพสต์นี้อยู่แล้ว ไม่ต้อง seed ซ้ำ
+  const existing = await query(
+    `SELECT COUNT(*) AS c FROM comments WHERE post_id = $1`,
+    [postId]
+  );
+  if (Number(existing.rows[0].c) > 0) {
+    // มีแล้ว ข้าม
+    return;
+  }
+
+  // thread 1
+  const c1 = await insertComment(
+    postId,
+    ids['wednesday addams'],
+    'มีใครเคยซื้อกับคนนี้ไหมคะ'
+  );
+  await insertComment(
+    postId,
+    ids['Enid Sinclair'],
+    'เคยค่ะ ได้ของสภาพดีเลย',
+    c1
+  );
+  await insertComment(
+    postId,
+    ids['tyler galpin'],
+    'เคยหลายครั้ง เจ้าของร้านให้ของแถมด้วยครับ',
+    c1
+  );
+
+  // thread 2
+  await insertComment(postId, ids['morticia addams'], 'ส่งไวสุดเมื่อไหร่คะ');
+
+  // thread 3
+  await insertComment(postId, ids['Bella'], 'ขอแอดไลน์ไปนะคะ');
+
+  // thread 4
+  const c4 = await insertComment(
+    postId,
+    ids['agnes demille'],
+    'มีกล่องมั้ยคะ'
+  );
+  await insertComment(postId, ownerId, 'มีกล่องให้', c4);
+
+  // thread 5
+  const c5 = await insertComment(postId, ids['James'], 'แท้ไหมครับ');
+  await insertComment(
+    postId,
+    ids['Jackson'],
+    'ผมดูจากภาพไม่น่าแท้นะครับ',
+    c5
+  );
+  await insertComment(postId, ownerId, 'แท้ 100%', c5);
+}
+
+// ====================================
+// 🔔 NOTIFICATION HELPER (เวอร์ชันที่แยก tokens แล้ว)
+// ====================================
+async function insertNotification(
+  userId,
+  message,
+  createdAt = null,
+  postId = null,
+  actorId = null
+) {
+  await query(
+    `INSERT INTO notifications (user_id, message, created_at, post_id, actor_id)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [userId, message, createdAt || new Date(), postId, actorId]
+  );
+}
+
+// ====================================
+// 🚀 MAIN SEED RUN
+// ====================================
 async function run() {
+  // ===== USERS (ครบทุกคน) =====
   const users = [
     { name: 'admin', role: 'admin' },
-    { name: 'taifoon', role: 'user' },
-    { name: 'gun', role: 'user' },
-    { name: 'focus', role: 'user' },
-    { name: 'toey', role: 'user' },
-    { name: 'candy', role: 'user' },
-    { name: 'pink', role: 'user' },
+    {
+      name: 'taifoon',
+      role: 'user',
+      img: 'https://down-th.img.susercontent.com/file/e2fd3a2bfb6d0f569bd96f43add535fa',
+    },
+    {
+      name: 'gun',
+      role: 'user',
+      img: 'https://t3.ftcdn.net/jpg/06/99/46/60/360_F_699466075_DaPTBNlNQTOwwjkOiFEoOvzDV0ByXR9E.jpg',
+    },
+    {
+      name: 'focus',
+      role: 'user',
+      img: 'https://pbs.twimg.com/profile_images/1816960260562673665/SRSE3nzR_400x400.jpg',
+    },
+    {
+      name: 'toey',
+      role: 'user',
+      img: 'https://t4.ftcdn.net/jpg/06/07/03/05/360_F_607030560_zllEoLiMDZNXEfEGjl4VVrHwDKyRPhh4.jpg',
+    },
+    {
+      name: 'candy',
+      role: 'user',
+      img: 'https://i.pinimg.com/1200x/c6/ce/e0/c6cee08fa28d3a1afc1b1302c59cf08c.jpg',
+    },
+    {
+      name: 'pink',
+      role: 'user',
+      img: 'https://img.freepik.com/photos-premium/visage-du-mannequin-coreen_825367-1868.jpg',
+    },
+    {
+      name: 'wednesday addams',
+      role: 'user',
+      img: 'https://static.wikia.nocookie.net/timburton/images/a/a1/WednesdayAddamsNetflix.jpg/revision/latest?cb=20221206163305',
+    },
+    {
+      name: 'Enid Sinclair',
+      role: 'user',
+      img: 'https://i.redd.it/b7ytukjkj7va1.jpg',
+    },
+    {
+      name: 'agnes demille',
+      role: 'user',
+      img: 'https://preview.redd.it/can-we-talk-about-this-look-of-agnes-demille-v0-3svuk3ccfymf1.jpeg?auto=webp&s=29ef456e0fb95b310c31ad737c4f7b5a87a5d806',
+    },
+    {
+      name: 'tyler galpin',
+      role: 'user',
+      img: 'https://preview.redd.it/tyler-galpin-was-never-the-villain-v0-as23faxgwtze1.jpeg?auto=webp&s=c3b87bfd985633806125c23c20c83126f26d80f4',
+    },
+    {
+      name: 'morticia addams',
+      role: 'user',
+      img: 'https://preview.redd.it/youre-a-brilliant-girl-wednesday-but-sometimes-you-get-in-v0-1ms0n4k914db1.png?auto=webp&s=aa329fdf796f63f4f0734c423d386eed4804177f',
+    },
+    {
+      name: 'Jackson',
+      role: 'user',
+      img: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Nnx8bWFsZSUyMHByb2ZpbGV8ZW58MHx8MHx8fDA%3D&fm=jpg&q=60&w=3000',
+    },
+    {
+      name: 'James',
+      role: 'user',
+      img: 'https://media.istockphoto.com/id/1682296067/photo/happy-studio-portrait-or-professional-man-real-estate-agent-or-asian-businessman-smile-for.jpg?s=612x612&w=0&k=20&c=9zbG2-9fl741fbTWw5fNgcEEe4ll-JegrGlQQ6m54rg=',
+    },
+    {
+      name: 'Mint',
+      role: 'user',
+      img: 'https://img.freepik.com/free-photo/portrait-sideways-woman-being-serious_23-2148255247.jpg?semt=ais_hybrid&w=740&q=80',
+    },
+    {
+      name: 'Bella',
+      role: 'user',
+      img: 'https://c.stocksy.com/a/ynfA00/z9/2543982.jpg',
+    },
   ];
 
+  // ดึง id ของ user ตามชื่อ
   const ids = {};
-  for (const u of users) ids[u.name] = await upsertUser(u.name, u.role);
-  //   { user_id: ids['alice'],   title: 'Vintage Camera',     description: 'Great condition', price: 1200, is_sell: true,  is_trade: false, tags: ['electronics'], status: 'approved' },
+  for (const u of users) {
+    ids[u.name] = await upsertUser(u.name, u.role, u.img || null);
+  }
 
+  // ===== POSTS =====
   const base = '/uploads/posts/';
-
   const posts = [
     {
       user: 'taifoon',
@@ -100,8 +276,13 @@ async function run() {
       sell: true,
       trade: false,
       tags: ['เสื้อผ้า'],
-      img: ['Jordan เสื้อยืด1.png','Jordan เสื้อยืด2.png','Jordan เสื้อยืด3.png','Jordan เสื้อยืด4.png'],
-      promo: true
+      img: [
+        'Jordan เสื้อยืด1.png',
+        'Jordan เสื้อยืด2.png',
+        'Jordan เสื้อยืด3.png',
+        'Jordan เสื้อยืด4.png',
+      ],
+      promo: true,
     },
     {
       user: 'toey',
@@ -120,8 +301,13 @@ async function run() {
       trade: true,
       tags: ['กระเป๋า'],
       special_tags: ['กระเป๋า'],
-      img: ['กระเป๋าสะพายไหล่1.png','กระเป๋าสะพายไหล่2.png','กระเป๋าสะพายไหล่3.png','กระเป๋าสะพายไหล่4.png'],
-      promo: false
+      img: [
+        'กระเป๋าสะพายไหล่1.png',
+        'กระเป๋าสะพายไหล่2.png',
+        'กระเป๋าสะพายไหล่3.png',
+        'กระเป๋าสะพายไหล่4.png',
+      ],
+      promo: false,
     },
     {
       user: 'pink',
@@ -139,8 +325,13 @@ async function run() {
       sell: true,
       trade: false,
       tags: ['รองเท้า'],
-      img: ['Nike ReactX1.png','Nike ReactX2.png','Nike ReactX3.png','Nike ReactX4.png'],
-      promo: false
+      img: [
+        'Nike ReactX1.png',
+        'Nike ReactX2.png',
+        'Nike ReactX3.png',
+        'Nike ReactX4.png',
+      ],
+      promo: false,
     },
     {
       user: 'candy',
@@ -159,8 +350,13 @@ async function run() {
       trade: true,
       tags: ['เครื่องประดับ'],
       special_tags: ['กระเป๋า'],
-      img: ['สร้อยคอ Celine1.png','สร้อยคอ Celine2.png','สร้อยคอ Celine3.png','สร้อยคอ Celine4.png'],
-      promo: true
+      img: [
+        'สร้อยคอ Celine1.png',
+        'สร้อยคอ Celine2.png',
+        'สร้อยคอ Celine3.png',
+        'สร้อยคอ Celine4.png',
+      ],
+      promo: true,
     },
     {
       user: 'focus',
@@ -179,8 +375,15 @@ async function run() {
       trade: true,
       tags: ['อุปกรณ์ไอที'],
       special_tags: ['อุปกรณ์ไอที'],
-      img: ['WIRELESS KEYBOARD1.jpg','WIRELESS KEYBOARD2.jpg','WIRELESS KEYBOARD3.jpg','WIRELESS KEYBOARD4.jpg','WIRELESS KEYBOARD5.jpg','WIRELESS KEYBOARD6.png'],
-      promo: false
+      img: [
+        'WIRELESS KEYBOARD1.jpg',
+        'WIRELESS KEYBOARD2.jpg',
+        'WIRELESS KEYBOARD3.jpg',
+        'WIRELESS KEYBOARD4.jpg',
+        'WIRELESS KEYBOARD5.jpg',
+        'WIRELESS KEYBOARD6.png',
+      ],
+      promo: false,
     },
     {
       user: 'gun',
@@ -198,10 +401,15 @@ async function run() {
       sell: true,
       trade: false,
       tags: ['อิเล็กทรอนิกส์'],
-      img: ['iPhone 17 Pro1.png','iPhone 17 Pro2.png','iPhone 17 Pro3.png','iPhone 17 Pro4.png'],
-      promo: false
-    }
-  ];  
+      img: [
+        'iPhone 17 Pro1.png',
+        'iPhone 17 Pro2.png',
+        'iPhone 17 Pro3.png',
+        'iPhone 17 Pro4.png',
+      ],
+      promo: false,
+    },
+  ];
 
   for (const p of posts) {
     await insertPostIfNotExists({
@@ -212,52 +420,107 @@ async function run() {
       is_sell: p.sell,
       is_trade: p.trade,
       tags: p.tags,
-      special_tags: ('special_tags' in p)
-      ? p.special_tags
-      : (p.trade ? ['tradeable'] : []), 
-      image_url: p.img.map(i => base + i),
+      special_tags:
+        'special_tags' in p ? p.special_tags : p.trade ? ['tradeable'] : [],
+      image_url: p.img.map((i) => base + i),
       status: 'approved',
-      promoted: p.promo
+      promoted: p.promo,
     });
   }
 
-      // === Seed Comments ===
-  const postRows = await query(`SELECT id, user_id FROM posts`);
-  const allPosts = postRows.rows;
+  // ===== SEED COMMENTS (พร้อม guard) =====
+  const postRows = await query(
+    `SELECT id, user_id FROM posts ORDER BY id ASC LIMIT 6`
+  );
+  for (const post of postRows.rows) {
+    await seedCommentsForPost(post.id, post.user_id, ids);
+  }
 
-  const sampleComments = [
-    "ของยังมีมั้ยครับ?",
-    "ส่งของยังไงครับ?",
-    "ขอรูปเพิ่มได้มั้ยคะ",
-    "ของแท้มั้ยครับ",
-    "ขอสภาพเพิ่มเติมหน่อยค่ะ",
-    "รับเทรดไหมครับ?",
-    "ของน่ารักมากเลย 😍",
-    "ลดได้อีกมั้ยคะ?",
-    "สนใจครับ เดี๋ยวโอนเลย",
-    "ขอดูด้านในหน่อยค่ะ"
-  ];
+  // ====================================
+  // 🔔 SEED NOTIFICATIONS (เวอร์ชันแยก tokens ออก)
+  // ====================================
+  async function seedNotificationsForUser(userId) {
+    const existing = await query(
+      `SELECT COUNT(*) AS c FROM notifications WHERE user_id = $1`,
+      [userId]
+    );
+    if (Number(existing.rows[0].c) > 0) {
+      console.log(`⏭️  Skipped notifications for user ${userId} (already exists)`);
+      return; // มี notification แล้ว ข้าม
+    }
 
-  for (const post of allPosts) {
-    // เพิ่มคอมเมนต์หลัก 3-5 อันต่อโพสต์
-    const numMain = Math.floor(Math.random() * 3) + 3;
-    for (let i = 0; i < numMain; i++) {
-      const userKeys = Object.keys(ids);
-      const commenter = userKeys[Math.floor(Math.random() * userKeys.length)];
-      const commentBody = sampleComments[Math.floor(Math.random() * sampleComments.length)];
-      const commentId = await insertComment(post.id, ids[commenter], commentBody, null);
+    const posts = await query(
+      `SELECT id, user_id FROM posts ORDER BY id ASC LIMIT 6`
+    );
+    const now = new Date();
 
-      // เพิ่ม reply ให้แต่ละคอมเมนต์หลัก 1–3 อัน
-      const numReplies = Math.floor(Math.random() * 3);
-      for (let j = 0; j < numReplies; j++) {
-        const replier = userKeys[Math.floor(Math.random() * userKeys.length)];
-        const replyBody = sampleComments[Math.floor(Math.random() * sampleComments.length)];
-        await insertComment(post.id, ids[replier], replyBody, commentId);
+    const shopMessages = [
+      'โพสต์ของคุณได้รับการอนุมัติและเผยแพร่แล้ว (-10 tokens)',
+      'โพสต์ของคุณถูกปฏิเสธ',
+      'ผู้ซื้อได้ยืนยันการรับสินค้าแล้ว รอรีวิวจากผู้ซื้อ',
+      'การเทรดยืนยันแล้ว กรุณาเตรียมส่งสินค้า',
+      'สินค้าของคุณได้ถูกจัดส่งแล้ว',
+      'ผู้รับยืนยันการจัดส่ง สถานะการเทรดเสร็จสมบูรณ์',
+      'การเสนอการเทรดที่ตรงกับแท็กพิเศษของคุณถูกส่งไปแล้ว',
+      'มีข้อเสนอการเทรดใหม่',
+      'ข้อเสนอการเทรดของคุณถูกยอมรับแล้ว กรุณายืนยันเพื่อดำเนินการต่อ',
+      'คุณได้รับรีวิวใหม่: 5 ดาว - ว้าว สินค้าสวยถูกใจมากจ้า',
+    ];
+
+    const orderMessages = [
+      'การชำระเงินของคุณได้รับการยืนยันแล้ว รอผู้ขายจัดส่ง',
+      'คำสั่งซื้อของคุณถูกจัดส่งแล้ว',
+      'ซื้อ 100 tokens สำเร็จ',
+      'ได้รับพัสดุแล้วใช่ไหม? กรุณากดยืนยันเพื่อรีวิวผู้ขาย',
+      'การชำระเงินของคุณได้รับการยืนยันแล้ว รอผู้ขายจัดส่ง',
+    ];
+
+    for (let i = 0; i < 10; i++) {
+      const randomPost =
+        posts.rows[Math.floor(Math.random() * posts.rows.length)];
+      const randomActorId = Math.floor(Math.random() * 10) + 1;
+
+      // แท็บ "ร้านค้าของฉัน"
+      await insertNotification(
+        userId,
+        shopMessages[i % shopMessages.length],
+        new Date(now.getTime() - i * 60 * 60 * 1000),
+        randomPost.id,
+        randomActorId
+      );
+
+      // แท็บ "คำสั่งซื้อของฉัน"
+      if (i < 10) {
+        const msg = orderMessages[i % orderMessages.length];
+        const createdAt = new Date(
+          now.getTime() - (i + 10) * 60 * 60 * 1000
+        );
+
+        // ❗ ถ้าเป็น tokens สำเร็จ → อย่าใส่ post_id / actor_id
+        if (msg.includes('tokens สำเร็จ')) {
+          await insertNotification(userId, msg, createdAt);
+        } else {
+          await insertNotification(
+            userId,
+            msg,
+            createdAt,
+            randomPost.id,
+            randomPost.user_id
+          );
+        }
       }
     }
   }
 
-  console.log('✅ Seeded database');
+  const allUsers = await query(`SELECT id, username FROM users`);
+  for (const u of allUsers.rows) {
+    await seedNotificationsForUser(u.id);
+    console.log(`📩 Seeded notifications for ${u.username}`);
+  }
+
+  console.log('✅ Seed completed successfully!');
 }
 
-run().catch(console.error).finally(() => pool.end());
+run()
+  .catch(console.error)
+  .finally(() => pool.end());
