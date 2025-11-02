@@ -181,36 +181,63 @@ router.post('/trade/:id/trade-add-tracking', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'ต้องระบุชื่อบริษัทขนส่ง' });
 
   try {
+    await query('BEGIN');
+
+    // อัปเดต order หลัก (ของ sender)
     const r = await query(
-      `UPDATE trade_orders
-       SET tracking_number=$1,
-           shipping_service=$2,
-           status='shipping',
-           shipped_at=NOW(),
-           updated_at=NOW()
-       WHERE id=$3 AND sender_id=$4 AND status='waiting_shipping'
-       RETURNING id,status,tracking_number,shipping_service,receiver_id,post_id`,
+      `
+      UPDATE trade_orders
+      SET tracking_number=$1,
+          shipping_service=$2,
+          status='shipping',
+          shipped_at=NOW(),
+          updated_at=NOW()
+      WHERE id=$3 AND sender_id=$4 AND status='waiting_shipping'
+      RETURNING id, trade_id, status, tracking_number, shipping_service, receiver_id, post_id
+      `,
       [tracking_number, shipping_service, orderId, userId]
     );
 
-    if (!r.rowCount)
+    if (!r.rowCount) {
+      await query('ROLLBACK');
       return res
         .status(400)
         .json({ error: 'ไม่พบคำสั่งซื้อหรือสถานะไม่ถูกต้อง' });
+    }
 
+    const order = r.rows[0];
+
+    // อัปเดตใบอีกฝั่ง (คู่เทรด) ให้ partner_shipped_at = NOW()
     await query(
-      `INSERT INTO notifications (user_id,message,post_id,actor_id)
-       VALUES ($1,$2,$3,$4)`,
+      `
+      UPDATE trade_orders
+      SET partner_shipped_at = NOW(), updated_at = NOW()
+      WHERE trade_id = $1
+        AND id <> $2
+        AND status IN ('waiting_shipping','shipping')
+      `,
+      [order.trade_id, order.id]
+    );
+
+    // แจ้งเตือนผู้รับ
+    await query(
+      `
+      INSERT INTO notifications (user_id, message, post_id, actor_id)
+      VALUES ($1, $2, $3, $4)
+      `,
       [
-        r.rows[0].receiver_id,
+        order.receiver_id,
         `คำสั่งซื้อของคุณถูกจัดส่งแล้วโดย ${shipping_service} หมายเลขพัสดุ: ${tracking_number}`,
-        r.rows[0].post_id,
+        order.post_id,
         userId,
       ]
     );
 
-    res.json({ ok: true, order: r.rows[0] });
+    await query('COMMIT');
+
+    res.json({ ok: true, order });
   } catch (err) {
+    await query('ROLLBACK').catch(() => {});
     console.error(err);
     res.status(500).json({ error: 'server error' });
   }
@@ -218,7 +245,7 @@ router.post('/trade/:id/trade-add-tracking', requireAuth, async (req, res) => {
 
 
 /**
- * POST /api/orders/trade/:id/confirm-delivery
+ * POST /api/orders/trade/:id/trade-confirm-delivery
  * ผู้รับ (receiver) ของใบนี้เท่านั้นที่กดได้
  * เปลี่ยน status -> completed
  */
@@ -227,27 +254,66 @@ router.post('/trade/:id/trade-confirm-delivery', requireAuth, async (req, res) =
   const userId = req.user.id;
 
   try {
-    const r = await query(
-      `UPDATE trade_orders
-       SET status='completed', delivered_at=NOW(), updated_at=NOW()
-       WHERE id=$1 AND receiver_id=$2 AND status IN ('shipping','waiting_shipping')
-       RETURNING id,status,sender_id,post_id`,
-      [orderId, userId]
-    );    
-    if (!r.rowCount) return res.status(400).json({ error: 'ไม่พบคำสั่งซื้อหรือสถานะไม่ถูกต้อง' });
+    await query('BEGIN');
 
-    await query(
-      `INSERT INTO notifications (user_id,message,post_id,actor_id)
-       VALUES ($1,$2,$3,$4)`,
-      [r.rows[0].sender_id, 'ผู้รับยืนยันการจัดส่ง สถานะการเทรดเสร็จสมบูรณ์', r.rows[0].post_id, userId]
+    // อัปเดตใบของผู้รับเอง
+    const r = await query(
+      `
+      UPDATE trade_orders
+      SET status='completed', 
+          delivered_at=NOW(), 
+          updated_at=NOW()
+      WHERE id=$1 
+        AND receiver_id=$2 
+        AND status IN ('shipping','waiting_shipping')
+      RETURNING id, trade_id, status, sender_id, receiver_id, post_id
+      `,
+      [orderId, userId]
     );
 
-    res.json({ ok: true, order: r.rows[0] });
+    if (!r.rowCount) {
+      await query('ROLLBACK');
+      return res.status(400).json({ error: 'ไม่พบคำสั่งซื้อหรือสถานะไม่ถูกต้อง' });
+    }
+
+    const order = r.rows[0];
+
+    // อัปเดตใบคู่เทรดให้ partner_delivered_at = NOW()
+    await query(
+      `
+      UPDATE trade_orders
+      SET partner_delivered_at = NOW(), updated_at = NOW()
+      WHERE trade_id = $1
+        AND id <> $2
+        AND status IN ('shipping','completed','waiting_shipping')
+      `,
+      [order.trade_id, order.id]
+    );
+
+    // แจ้งเตือนผู้ส่ง
+    await query(
+      `
+      INSERT INTO notifications (user_id, message, post_id, actor_id)
+      VALUES ($1, $2, $3, $4)
+      `,
+      [
+        order.sender_id,
+        'ผู้รับยืนยันการจัดส่ง สถานะการเทรดเสร็จสมบูรณ์',
+        order.post_id,
+        userId,
+      ]
+    );
+
+    await query('COMMIT');
+
+    res.json({ ok: true, order });
   } catch (err) {
+    await query('ROLLBACK').catch(() => {});
     console.error(err);
     res.status(500).json({ error: 'server error' });
   }
 });
+
 
 /**
  * GET /api/orders/trade/my
