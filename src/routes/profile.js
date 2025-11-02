@@ -36,7 +36,10 @@ router.get('/public/:id', async (req, res) => {
 // ดึงข้อมูลโปรไฟล์ของตัวเอง (ต้องล็อกอิน)
 router.get('/me', requireAuth, async (req, res) => {
   const r = await query(
-    `SELECT id, username, name, phone, email, fackebook, line, address, bio, profile_image_url, tokens, role 
+    `SELECT id, username, name, phone, email, fackebook, line, address, bio, 
+            profile_image_url, tokens, role, 
+            payment_account_name, payment_qr_code_url, 
+            shipping_name, shipping_phone
        FROM users WHERE id=$1`,
     [req.user.id]
   );
@@ -45,12 +48,16 @@ router.get('/me', requireAuth, async (req, res) => {
 
 // อัปเดตโปรไฟล์ของตัวเอง (ต้องล็อกอิน อัปโหลดรูปได้)
 router.put('/me', requireAuth, upload.single('profileImage'), async (req, res) => {
-  const { name, email, phone, fackebook, line, address,  bio } = req.body;
+  const { name, email, phone, fackebook, line, address, bio, 
+          payment_account_name, shipping_name, shipping_phone } = req.body;
 
   const phoneOk = !phone || /^\d{10}$/.test(String(phone));
+  const shippingPhoneOk = !shipping_phone || /^\d{10}$/.test(String(shipping_phone));
   const emailOk = !email || String(email).includes('@');
   if (!phoneOk)
     return res.status(400).json({ error: 'เบอร์โทรศัพท์ต้องมี 10 หลัก' });
+  if (!shippingPhoneOk)
+    return res.status(400).json({ error: 'เบอร์โทรศัพท์สำหรับจัดส่งพัสดุต้องมี 10 หลัก' });
   if (!emailOk)
     return res.status(400).json({ error: 'อีเมลต้องมี @' });
 
@@ -65,9 +72,15 @@ router.put('/me', requireAuth, upload.single('profileImage'), async (req, res) =
             fackebook=COALESCE($6, fackebook),
             line=COALESCE($7, line),
             bio=COALESCE($8, bio),
-            profile_image_url=COALESCE($9, profile_image_url)
+            profile_image_url=COALESCE($9, profile_image_url),
+            payment_account_name=COALESCE($10, payment_account_name),
+            shipping_name=COALESCE($11, shipping_name),
+            shipping_phone=COALESCE($12, shipping_phone)
       WHERE id=$1
-      RETURNING id, username, name, phone, email, fackebook, line, address, bio, profile_image_url, tokens, role`,
+      RETURNING id, username, name, phone, email, fackebook, line, address, bio, 
+                profile_image_url, tokens, role, 
+                payment_account_name, payment_qr_code_url, 
+                shipping_name, shipping_phone`,
     [
       req.user.id,
       name || null,
@@ -77,14 +90,16 @@ router.put('/me', requireAuth, upload.single('profileImage'), async (req, res) =
       fackebook || null,
       line || null,
       bio || null,
-      img
+      img,
+      payment_account_name || null,
+      shipping_name || null,
+      shipping_phone || null
     ]
   );
 
   res.json(r.rows[0]);
 });
 
-// ดึงประวัติการใช้งานของตัวเอง (โพสต์, ซื้อ, เทรด) (ต้องล็อกอิน)
 // ดึงประวัติการใช้งานของตัวเอง (โพสต์, ซื้อ, เทรด) (ต้องล็อกอิน)
 router.get('/history', requireAuth, async (req, res) => {
   const userId = req.user.id;
@@ -186,6 +201,25 @@ router.get('/history', requireAuth, async (req, res) => {
     myOrders: myOrders.rows,
     myTrades: myTrades.rows,
   });
+});
+
+// อัปโหลด QR Code สำหรับช่องทางการรับเงิน
+router.post('/payment-qr', requireAuth, upload.single('qrCode'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'กรุณาอัปโหลดไฟล์ QR Code' });
+  }
+
+  const qrUrl = '/uploads/avatars/' + req.file.filename;
+
+  const r = await query(
+    `UPDATE users 
+        SET payment_qr_code_url=$2
+      WHERE id=$1
+      RETURNING payment_qr_code_url`,
+    [req.user.id, qrUrl]
+  );
+
+  res.json({ qr_code_url: r.rows[0].payment_qr_code_url });
 });
 
 export default router;

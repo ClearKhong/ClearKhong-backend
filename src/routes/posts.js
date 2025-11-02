@@ -221,9 +221,11 @@ router.post('/:id/buy', requireAuth, uploadSlip.single('payment_slip_url'), asyn
   const buyer_id = req.user.id;
   let { name, phone, address } = req.body; 
 
-  if (!post_id) return res.status(400).json({ error: 'ต้องระบุ postId' });
+  if (!post_id)
+    return res.status(400).json({ error: 'ต้องระบุ postId' });
 
-  if (!req.file) return res.status(400).json({ error: 'ต้องแนบสลิปการชำระเงิน (1 ไฟล์)' });
+  if (!req.file)
+    return res.status(400).json({ error: 'ต้องแนบสลิปการชำระเงิน (1 ไฟล์)' });
 
   const uploadPath = '/uploads/slips/' + req.file.filename; 
 
@@ -241,13 +243,16 @@ router.post('/:id/buy', requireAuth, uploadSlip.single('payment_slip_url'), asyn
   }
 }
   const postRes = await query('SELECT user_id, price, status FROM posts WHERE id=$1', [post_id]);
-  if (!postRes.rowCount) return res.status(404).json({ error: 'ไม่พบโพสต์' });
+  if (!postRes.rowCount)
+    return res.status(404).json({ error: 'ไม่พบโพสต์' });
 
   const seller_id = postRes.rows[0].user_id;
   const amount = postRes.rows[0].price || 0;
 
-  if (seller_id === buyer_id) return res.status(400).json({ error: 'ไม่สามารถซื้อโพสต์ของตัวเองได้' });
-  if (postRes.rows[0].status !== 'approved') return res.status(400).json({ error: 'ไม่สามารถซื้อโพสต์นี้ได้' });
+  if (seller_id === buyer_id)
+    return res.status(400).json({ error: 'ไม่สามารถซื้อโพสต์ของตัวเองได้' });
+  if (postRes.rows[0].status !== 'approved')
+    return res.status(400).json({ error: 'ไม่สามารถซื้อโพสต์นี้ได้' });
 
   // ตรวจสอบ order ซ้ำ
   const existing = await query('SELECT 1 FROM orders WHERE post_id=$1 AND buyer_id=$2', [post_id, buyer_id]);
@@ -297,6 +302,14 @@ router.post('/:id/promote', requireAuth, async (req,res)=>{
 
   await query(`UPDATE users SET tokens=tokens-$1 WHERE id=$2`,[cost,req.user.id]);
   await query(`UPDATE posts SET promoted=true, promoted_at=NOW() WHERE id=$1`,[id]);
+
+    // ส่งแจ้งเตือน
+  await query(`INSERT INTO notifications (user_id,message,post_id) VALUES ($1,$2,$3)`, [
+    p.user_id, 
+    `โปรโมทโพสต์ ${p.title} สำเร็จ! (หักโทเคน ${cost} tokens)`,
+    id
+  ]);
+  
   res.json({ok:true,tokens:tk-cost});
 });
 export default router;
