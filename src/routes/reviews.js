@@ -61,7 +61,7 @@ router.post('/', requireAuth, async (req, res) => {
          VALUES ($1,$2,$3,$4)`,
         [
           o.rows[0].seller_id,
-          `You received a new review: ${rating} stars${comment ? ' - ' + comment : ''}`,
+          `คุณได้รับรีวิวใหม่: ${rating} ดาว${comment ? ' - ' + comment : ''}`,
           o.rows[0].post_id,
           reviewerId
         ]

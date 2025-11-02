@@ -130,7 +130,7 @@ router.post('/:id/confirm-delivery', requireAuth, async (req, res) => {
        VALUES ($1,$2,$3,$4)`,
       [
         r.rows[0].seller_id,
-        'ผู้ซื้อได้ยืนยันการจัดส่งแล้ว รอการรีวิว',
+        'ผู้ซื้อได้ยืนยันการรับสินค้าแล้ว รอรีวิวจากผู้ซื้อ',
         r.rows[0].post_id,
         userId
       ]
