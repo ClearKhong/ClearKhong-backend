@@ -98,6 +98,67 @@ router.get('/', async (req, res) => {
   }
 });
 
+// ดึงโพสต์ทุกสถานะ (รวม pending / closed / rejected)
+router.get('/all', async (req, res) => {
+  const { q, tag } = req.query;
+
+  let sql = `
+    SELECT p.*, 
+      u.username AS seller_username, 
+      u.profile_image_url AS seller_profile_image_url, 
+      COALESCE(ROUND(AVG(sr.rating)::numeric, 1), 0) AS seller_rating,
+      COALESCE(COUNT(sr.rating), 0) AS review_count,
+      CASE 
+        WHEN LOWER(p.title) LIKE LOWER($1 || '%') THEN 3
+        WHEN LOWER(p.title) LIKE LOWER('%' || $1 || '%') THEN 2
+        WHEN EXISTS (
+          SELECT 1 FROM unnest(p.tags) AS t 
+          WHERE LOWER(t) LIKE LOWER('%' || $1 || '%')
+        ) THEN 1
+        ELSE 0
+      END AS relevance
+    FROM posts p
+    JOIN users u ON u.id = p.user_id
+    LEFT JOIN seller_reviews sr ON sr.seller_id = p.user_id
+    WHERE 1=1
+  `;
+
+  const ps = [q || ''];
+
+  // ถ้ามี tag filter
+  if (tag) {
+    ps.push(tag.toLowerCase());
+    sql += `
+      AND EXISTS (
+        SELECT 1 FROM unnest(p.tags) AS t 
+        WHERE LOWER(t) = $${ps.length}
+      )
+    `;
+  }
+
+  // เงื่อนไขค้นหา (ชื่อหรือแท็ก)
+  sql += `
+    AND (
+      $1 = ''
+      OR LOWER(p.title) LIKE LOWER('%' || $1 || '%')
+      OR EXISTS (
+        SELECT 1 FROM unnest(p.tags) AS t 
+        WHERE LOWER(t) LIKE LOWER('%' || $1 || '%')
+      )
+    )
+    GROUP BY p.id, u.username, u.profile_image_url
+    ORDER BY relevance DESC, p.promoted_at DESC NULLS LAST, p.created_at DESC
+  `;
+
+  try {
+    const r = await query(sql, ps);
+    res.json(r.rows);
+  } catch (err) {
+    console.error(" Error fetching all posts:", err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
 // ดึงรายละเอียดโพสต์ตาม id
 router.get('/:id', async (req, res) => {
   const sql = `
@@ -160,9 +221,11 @@ router.post('/:id/buy', requireAuth, uploadSlip.single('payment_slip_url'), asyn
   const buyer_id = req.user.id;
   let { name, phone, address } = req.body; 
 
-  if (!post_id) return res.status(400).json({ error: 'ต้องระบุ postId' });
+  if (!post_id)
+    return res.status(400).json({ error: 'ต้องระบุ postId' });
 
-  if (!req.file) return res.status(400).json({ error: 'ต้องแนบสลิปการชำระเงิน (1 ไฟล์)' });
+  if (!req.file)
+    return res.status(400).json({ error: 'ต้องแนบสลิปการชำระเงิน (1 ไฟล์)' });
 
   const uploadPath = '/uploads/slips/' + req.file.filename; 
 
@@ -180,13 +243,16 @@ router.post('/:id/buy', requireAuth, uploadSlip.single('payment_slip_url'), asyn
   }
 }
   const postRes = await query('SELECT user_id, price, status FROM posts WHERE id=$1', [post_id]);
-  if (!postRes.rowCount) return res.status(404).json({ error: 'ไม่พบโพสต์' });
+  if (!postRes.rowCount)
+    return res.status(404).json({ error: 'ไม่พบโพสต์' });
 
   const seller_id = postRes.rows[0].user_id;
   const amount = postRes.rows[0].price || 0;
 
-  if (seller_id === buyer_id) return res.status(400).json({ error: 'ไม่สามารถซื้อโพสต์ของตัวเองได้' });
-  if (postRes.rows[0].status !== 'approved') return res.status(400).json({ error: 'ไม่สามารถซื้อโพสต์นี้ได้' });
+  if (seller_id === buyer_id)
+    return res.status(400).json({ error: 'ไม่สามารถซื้อโพสต์ของตัวเองได้' });
+  if (postRes.rows[0].status !== 'approved')
+    return res.status(400).json({ error: 'ไม่สามารถซื้อโพสต์นี้ได้' });
 
   // ตรวจสอบ order ซ้ำ
   const existing = await query('SELECT 1 FROM orders WHERE post_id=$1 AND buyer_id=$2', [post_id, buyer_id]);
@@ -260,8 +326,6 @@ router.put('/:id', requireAuth, multerArray('images', 10), async (req,res)=>{
     return res.status(400).json({ error: 'โพสต์กำลังรอการอนุมัติ; ไม่สามารถแก้ไขได้' });
   if (owner.rows[0].status === 'pending')
     return res.status(400).json({ error: 'โพสต์กำลังรอการอนุมัติ; ไม่สามารถแก้ไขได้' });
-  if (owner.rows[0].status === 'approved')
-    return res.status(400).json({ error: 'โพสต์นี้ได้รับการเผยแพร่แล้ว' });
 
   const { title, description } = req.body;
   const isSell = (typeof req.body.is_sell !== 'undefined') ? ['true','on','1','yes'].includes(String(req.body.is_sell).toLowerCase()) : null;
@@ -305,8 +369,11 @@ router.put('/:id', requireAuth, multerArray('images', 10), async (req,res)=>{
     push('special_tags', special_tags);
   if (images)
     push('image_url', JSON.stringify(images));
-  //แก้เสร็จ->pending
-  push('status', 'pending');
+
+  //ถ้าโพสต์เดิมเป็น approved ให้คงสถานะ approved ไว้
+  const newStatus = (owner.rows[0].status === 'approved') ? 'approved' : 'pending';
+  push('status', newStatus);  
+
   if (!sets.length)
     return res.status(400).json({ error: 'ไม่มีการเปลี่ยนแปลง' });
   const r = await query(`UPDATE posts SET ${sets.join(', ')} WHERE id=$1 RETURNING *`, ps);

@@ -34,7 +34,11 @@ CREATE TABLE IF NOT EXISTS users (
 );
 ALTER TABLE public.users
   ADD COLUMN IF NOT EXISTS address TEXT,
-  ADD COLUMN IF NOT EXISTS bio     TEXT;
+  ADD COLUMN IF NOT EXISTS bio TEXT,
+  ADD COLUMN IF NOT EXISTS payment_account_name TEXT,
+  ADD COLUMN IF NOT EXISTS payment_qr_code_url TEXT,
+  ADD COLUMN IF NOT EXISTS shipping_name TEXT,
+  ADD COLUMN IF NOT EXISTS shipping_phone VARCHAR(10);
 
 -- 3. POSTS
 CREATE TABLE IF NOT EXISTS posts (
@@ -241,6 +245,11 @@ BEGIN
   END IF;
 END
 $$ LANGUAGE plpgsql;
+-- เพิ่มคอลัมน์ timestamp สำหรับเก็บไทม์ไลน์ของการซื้อ
+ALTER TABLE orders
+  ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP,    -- วันที่ผู้ขายตรวจสอบการชำระเงินสำเร็จ
+  ADD COLUMN IF NOT EXISTS shipped_at TIMESTAMP,      -- วันที่ผู้ขายแจ้งเลขพัสดุ
+  ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP;    -- วันที่ผู้ซื้อได้รับพัสดุ
 
 -- 12. SELLER REVIEWS
 DO $$ BEGIN
@@ -286,6 +295,15 @@ CREATE TABLE IF NOT EXISTS trade_orders (
 
   CONSTRAINT uniq_trade_order UNIQUE (trade_id, sender_id, receiver_id)
 );
+
+-- เพิ่มคอลัมน์ timestamp สำหรับเก็บไทม์ไลน์ของการเทรด
+ALTER TABLE trade_orders
+  ADD COLUMN IF NOT EXISTS partner_confirmed_at TIMESTAMP,    -- วันที่คู่เทรดยืนยันการเทรด
+  ADD COLUMN IF NOT EXISTS shipped_at TIMESTAMP,              -- วันที่คุณแจ้งเลขพัสดุ
+  ADD COLUMN IF NOT EXISTS partner_shipped_at TIMESTAMP,      -- วันที่คู่เทรดแจ้งเลขพัสดุ
+  ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP,            -- วันที่คุณได้รับพัสดุ
+  ADD COLUMN IF NOT EXISTS partner_delivered_at TIMESTAMP;    -- วันที่คู่เทรดได้รับพัสดุ
+
 
 CREATE INDEX IF NOT EXISTS idx_trade_orders_sender    ON trade_orders(sender_id);
 CREATE INDEX IF NOT EXISTS idx_trade_orders_receiver  ON trade_orders(receiver_id);
