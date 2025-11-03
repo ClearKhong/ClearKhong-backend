@@ -14,13 +14,24 @@ const DEFAULT_IMG='https://www.apple.com/v/iphone/home/cc/images/overview/consid
 
 router.get('/myfavoite', requireAuth, async (req, res) => {
   const user_id = req.user.id;
+
   const r = await query(
-    `SELECT f.*, p.* 
-     FROM favorites f 
+    `SELECT 
+        f.id AS favorite_id,
+        p.*,
+        u.username AS seller_username,
+        u.profile_image_url AS seller_profile_image_url,
+        COALESCE(ROUND(AVG(rw.rating), 1), 0) AS seller_rating
+     FROM favorites f
      JOIN posts p ON p.id = f.post_id
-     WHERE f.user_id=$1`,
+     JOIN users u ON p.user_id = u.id
+     LEFT JOIN seller_reviews rw ON rw.seller_id = u.id
+     WHERE f.user_id = $1
+     GROUP BY f.id, p.id, u.username, u.profile_image_url
+     ORDER BY f.created_at DESC`,
     [user_id]
   );
+
   res.json(r.rows);
 });
 
