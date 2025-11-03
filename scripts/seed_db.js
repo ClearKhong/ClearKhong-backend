@@ -723,6 +723,37 @@ async function run() {
     });
   }
 
+  // ===== SELLER REVIEWS =====
+const reviews = [
+  { reviewer: 'gun', seller: 'momo', rating: 5, comment: 'ของสภาพดี ส่งไวเหมือนเดิมเลยครับ 👍' },
+  { reviewer: 'momo', seller: 'pink', rating: 4, comment: 'แพ็คของแน่นหนา คุณภาพตรงปกเลยค่ะ 💕' },
+  { reviewer: 'pink', seller: 'adam', rating: 5, comment: 'บริการดีมากค่ะ ตอบไว เป็นกันเองสุด ๆ' },
+  { reviewer: 'adam', seller: 'focus', rating: 2, comment: 'สินค้าตรงปกแต่ส่งช้านิดหน่อยครับ 🕒' },
+  { reviewer: 'focus', seller: 'momo', rating: 4, comment: 'ได้ของครบ สภาพดีมาก ประทับใจค่ะ 🌸' },
+  { reviewer: 'toey', seller: 'gun', rating: 5, comment: 'ราคาดี ของแท้แน่นอน แนะนำเลยครับ 🔥' },
+  { reviewer: 'taifoon', seller: 'toey', rating: 4, comment: 'ส่งเร็ว ของดี มีของแถมด้วย 🛍️' },
+  { reviewer: 'Bella', seller: 'momo', rating:3, comment: 'กล่องบุบไปหน่อย แต่ยังใช้งานได้ 😅' },
+  { reviewer: 'momo', seller: 'candy', rating: 5, comment: 'น่ารักมาก ของหอม กล่องห่อดีมากค่ะ 🎁' },
+  { reviewer: 'gun', seller: 'momo', rating: 4, comment: 'สินค้าคุณภาพดีเหมือนใหม่เลยครับ ⚡' },
+  { reviewer: 'wednesday addams', seller: 'adam', rating: 5, comment: 'เทรดง่ายมากค่ะ คนขายใจดี ❤️' },
+  { reviewer: 'Enid Sinclair', seller: 'taifoon', rating: 3, comment: 'ของดีแต่ส่งช้าหน่อย 😐' },
+  { reviewer: 'Mint', seller: 'gun', rating: 5, comment: 'ส่งไวทันใจ สินค้าตรงปกมาก 🥰' },
+  { reviewer: 'James', seller: 'candy', rating: 4, comment: 'คุณภาพสมราคาเลยครับ 👍' },
+  { reviewer: 'Jackson', seller: 'adam', rating: 5, comment: 'ดีมากครับ ซื้อง่ายไม่ยุ่งยาก 💯' },
+];
+
+for (const r of reviews) {
+  await query(
+    `INSERT INTO seller_reviews (reviewer_id, seller_id, rating, comment, created_at)
+     VALUES ($1, $2, $3, $4, NOW())
+     ON CONFLICT (reviewer_id, seller_id) DO NOTHING`,
+    [ids[r.reviewer], ids[r.seller], r.rating, r.comment]
+  );
+}
+
+console.log("⭐ Seeded seller reviews");
+
+
   // ===== SEED COMMENTS (พร้อม guard) =====
   const postRows = await query(
     `SELECT id, user_id FROM posts ORDER BY id ASC LIMIT 6`
